@@ -287,6 +287,33 @@ async function computeExpectedInventory(sessionId) {
   return Array.from(expectedMap.entries()).map(([product, quantityExpected]) => ({ product, quantityExpected }));
 }
 
+// The "latest reliable inventory state" for a vehicle, independent of any one session —
+// used by weekly counts and replenishment, neither of which is tied to a single business day.
+// Prefers a live active session (OPEN or CLOSING_PENDING); falls back to the most recently
+// CLOSED session's final state; falls back to empty if the vehicle has never had a session.
+async function getCurrentStockForVehicle(vehicleId) {
+  let session = await InventorySession.findOne({
+    vehicle: vehicleId,
+    status: { $in: ACTIVE_SESSION_STATUSES },
+  }).sort({ createdAt: -1 });
+  let source = 'ACTIVE_SESSION';
+
+  if (!session) {
+    session = await InventorySession.findOne({ vehicle: vehicleId, status: SESSION_STATUSES.CLOSED }).sort({
+      businessDate: -1,
+      createdAt: -1,
+    });
+    source = session ? 'LAST_CLOSED_SESSION' : 'NONE';
+  }
+
+  if (!session) {
+    return { source, session: null, stock: [] };
+  }
+
+  const stock = await computeExpectedInventory(session._id);
+  return { source, session, stock };
+}
+
 // Same as computeExpectedInventory, but with product name/icon populated for display.
 async function getExpectedInventoryWithProducts(sessionId) {
   const expected = await computeExpectedInventory(sessionId);
@@ -314,4 +341,5 @@ module.exports = {
   reopenSession,
   closeSession,
   computeExpectedInventory,
+  getCurrentStockForVehicle,
 };

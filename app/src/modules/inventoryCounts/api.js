@@ -11,3 +11,12 @@ export function listCountsBySession(token, sessionId) {
 export function getCount(token, id) {
   return request(`/inventory-counts/${id}`, { token });
 }
+
+export function createWeeklyCount(token, { vehicle, counts, weekOf }) {
+  return request('/inventory-counts/weekly', { method: 'POST', body: { vehicle, counts, weekOf }, token });
+}
+
+export function listWeeklyCounts(token, params = {}) {
+  const query = new URLSearchParams(params).toString();
+  return request(`/inventory-counts/weekly${query ? `?${query}` : ''}`, { token });
+}

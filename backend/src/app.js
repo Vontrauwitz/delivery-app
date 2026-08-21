@@ -11,6 +11,7 @@ const inventoryRoutes = require('./modules/inventory/inventory.routes');
 const inventoryCountsRoutes = require('./modules/inventoryCounts/inventoryCounts.routes');
 const closingRoutes = require('./modules/closing/closing.routes');
 const workShiftsRoutes = require('./modules/workShifts/workShifts.routes');
+const replenishmentRoutes = require('./modules/replenishment/replenishment.routes');
 const errorHandler = require('./middlewares/errorHandler');
 
 const app = express();
@@ -31,6 +32,7 @@ app.use('/inventory-sessions', inventoryRoutes);
 app.use('/inventory-counts', inventoryCountsRoutes);
 app.use('/closings', closingRoutes);
 app.use('/work-shifts', workShiftsRoutes);
+app.use('/replenishment', replenishmentRoutes);
 
 app.use(errorHandler);
 

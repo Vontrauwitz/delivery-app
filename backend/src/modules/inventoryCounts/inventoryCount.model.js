@@ -20,8 +20,17 @@ const expectedItemSchema = new mongoose.Schema(
 const inventoryCountSchema = new mongoose.Schema(
   {
     vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'Vehicle', required: true },
-    driver: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    inventorySession: { type: mongoose.Schema.Types.ObjectId, ref: 'InventorySession', required: true },
+    // Optional: INITIAL/PARTIAL/CLOSING always set this (session.driver at count time).
+    // WEEKLY counts aren't tied to one business day/session, so a vehicle with no assigned
+    // driver can still be counted — driver is then left unset.
+    driver: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    // Optional: INITIAL/PARTIAL/CLOSING always set this (the session the count belongs to).
+    // WEEKLY is a vehicle-level audit that may span/outlive a single InventorySession, so it
+    // has none.
+    inventorySession: { type: mongoose.Schema.Types.ObjectId, ref: 'InventorySession' },
+    // Only set for WEEKLY: the date/week this count represents (report grouping is derived
+    // from it). INITIAL/PARTIAL/CLOSING already have session.businessDate + createdAt.
+    businessDate: { type: Date },
     type: {
       type: String,
       enum: Object.values(INVENTORY_COUNT_TYPES),
@@ -40,5 +49,6 @@ inventoryCountSchema.index({ inventorySession: 1 });
 inventoryCountSchema.index({ vehicle: 1 });
 inventoryCountSchema.index({ driver: 1 });
 inventoryCountSchema.index({ type: 1 });
+inventoryCountSchema.index({ vehicle: 1, type: 1, businessDate: -1 });
 
 module.exports = mongoose.model('InventoryCount', inventoryCountSchema);

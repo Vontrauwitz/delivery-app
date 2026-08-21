@@ -10,7 +10,10 @@
     "seed": "node src/seed.js",
     "test:e2e:phase2": "node test/e2e-phase2.js",
     "test:e2e:workshift": "node test/e2e-workshift.js",
-    "test:e2e": "npm run test:e2e:phase2 && npm run test:e2e:workshift"
+    "test:e2e:replenishment": "node test/e2e-replenishment.js",
+    "test:unit:replenishment": "node test/unit-replenishment.js",
+    "test:e2e": "npm run test:e2e:phase2 && npm run test:e2e:workshift && npm run test:e2e:replenishment",
+    "test": "npm run test:unit:replenishment && npm run test:e2e"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

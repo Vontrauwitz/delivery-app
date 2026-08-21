@@ -55,6 +55,21 @@ const WORK_SHIFT_STATUSES = {
   CLOSED: 'CLOSED',
 };
 
+// Used when a product has no per-product override in ReplenishmentConfig.
+const REPLENISHMENT_DEFAULTS = {
+  COVERAGE_DAYS: 3,
+  SAFETY_STOCK: 0,
+};
+
+// Consumption is averaged over at most this many recent CLOSED sessions for the vehicle
+// ("prefer completed historical sessions" — an in-progress OPEN session is a partial day
+// and would skew a daily average).
+const REPLENISHMENT_CONSUMPTION_WINDOW_SESSIONS = 7;
+
+// Fewer than this many CLOSED sessions in the window => insufficientHistory is flagged in
+// the response, so the UI can warn the manager the suggestion is based on thin data.
+const REPLENISHMENT_MIN_HISTORY_SESSIONS = 3;
+
 module.exports = {
   ROLES,
   PAYMENT_METHODS,
@@ -65,4 +80,7 @@ module.exports = {
   INVENTORY_COUNT_TYPES,
   CLOSING_STATUSES,
   WORK_SHIFT_STATUSES,
+  REPLENISHMENT_DEFAULTS,
+  REPLENISHMENT_CONSUMPTION_WINDOW_SESSIONS,
+  REPLENISHMENT_MIN_HISTORY_SESSIONS,
 };

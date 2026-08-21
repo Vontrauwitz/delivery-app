@@ -43,6 +43,24 @@ export default function AdminHome() {
         </Pressable>
       </Link>
 
+      <Link href="/admin/replenishment" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Reabastecimiento</Text>
+        </Pressable>
+      </Link>
+
+      <Link href="/admin/weekly-count" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Conteo semanal</Text>
+        </Pressable>
+      </Link>
+
+      <Link href="/admin/weekly-report" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Reporte semanal</Text>
+        </Pressable>
+      </Link>
+
       <Pressable style={styles.button} onPress={signOut}>
         <Text style={styles.buttonText}>Cerrar sesión</Text>
       </Pressable>

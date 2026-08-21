@@ -45,4 +45,32 @@ async function getById(req, res, next) {
   }
 }
 
-module.exports = { createPartial, listBySession, getById };
+async function createWeekly(req, res, next) {
+  try {
+    if (!req.body.vehicle) {
+      return next(new HttpError(400, 'El vehículo es requerido'));
+    }
+    const count = await service.createWeeklyCount({
+      vehicleId: req.body.vehicle,
+      rawCounts: req.body.counts,
+      weekOf: req.body.weekOf,
+      createdBy: req.user.id,
+    });
+    res.status(201).json(count);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function listWeekly(req, res, next) {
+  try {
+    const filter = {};
+    if (req.query.vehicle) filter.vehicle = req.query.vehicle;
+    const counts = await service.listWeeklyCounts(filter);
+    res.json(counts);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { createPartial, listBySession, getById, createWeekly, listWeekly };

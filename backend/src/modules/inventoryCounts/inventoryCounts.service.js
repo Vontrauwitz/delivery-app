@@ -3,6 +3,7 @@ const HttpError = require('../../shared/httpError');
 const round2 = require('../../shared/round2');
 const { INVENTORY_COUNT_TYPES, SESSION_STATUSES } = require('../../shared/constants');
 const inventoryService = require('../inventory/inventory.service');
+const vehiclesService = require('../vehicles/vehicles.service');
 const auditService = require('../audit/audit.service');
 
 function normalizeCounts(rawCounts) {
@@ -143,15 +144,82 @@ function withDifferences(doc) {
   obj.differences = obj.counts.map((c) => {
     const productId = String(c.product?._id || c.product);
     const quantityExpected = expectedMap.has(productId) ? expectedMap.get(productId) : 0;
+    const difference = round2(c.quantityCounted - quantityExpected);
     return {
       product: c.product,
       quantityCounted: c.quantityCounted,
       quantityExpected,
-      difference: round2(c.quantityCounted - quantityExpected),
+      difference,
+      // Only meaningful when something was actually expected — a 0-expected baseline would
+      // make any nonzero count read as an infinite/undefined percentage.
+      differencePercentage: quantityExpected !== 0 ? round2((difference / quantityExpected) * 100) : null,
     };
   });
 
   return obj;
+}
+
+// Manager/Admin-only for this phase (see createWeeklyCount below for why).
+async function createWeeklyCount({ vehicleId, rawCounts, weekOf, createdBy }) {
+  const vehicle = await vehiclesService.getVehicleById(vehicleId);
+  const counts = normalizeCounts(rawCounts);
+
+  const { stock: expected, session } = await inventoryService.getCurrentStockForVehicle(vehicleId);
+  const expectedAtCountTime = expected.map((e) => ({ product: e.product, quantityExpected: e.quantityExpected }));
+
+  const doc = await InventoryCount.create({
+    vehicle: vehicle._id,
+    driver: vehicle.assignedDriver ? vehicle.assignedDriver._id || vehicle.assignedDriver : undefined,
+    inventorySession: session ? session._id : undefined,
+    businessDate: weekOf ? new Date(weekOf) : new Date(),
+    type: INVENTORY_COUNT_TYPES.WEEKLY,
+    counts,
+    expectedAtCountTime,
+    createdBy,
+  });
+
+  await auditService.logChange({
+    entity: 'InventoryCount',
+    entityId: doc._id,
+    action: 'CREATE',
+    changes: [{ field: 'type', oldValue: null, newValue: INVENTORY_COUNT_TYPES.WEEKLY }],
+    performedBy: createdBy,
+  });
+
+  return getCountById(doc._id);
+}
+
+// ISO week label (e.g. "2026-W34") used purely for grouping the discrepancy report by week —
+// not stored, always derived from businessDate so there's nothing to keep in sync.
+function isoWeekLabel(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNumber = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNumber).padStart(2, '0')}`;
+}
+
+// Weekly discrepancy report: every WEEKLY count (optionally filtered by vehicle), each with
+// its computed differences/percentages and a derived week label for the manager to group by
+// vehicle and week in the UI.
+async function listWeeklyCounts(filter = {}) {
+  const query = { type: INVENTORY_COUNT_TYPES.WEEKLY };
+  if (filter.vehicle) query.vehicle = filter.vehicle;
+
+  const docs = await InventoryCount.find(query)
+    .sort({ businessDate: -1, createdAt: -1 })
+    .populate('vehicle', 'name')
+    .populate('driver', 'name email')
+    .populate('createdBy', 'name email')
+    .populate('counts.product', 'name icon')
+    .populate('expectedAtCountTime.product', 'name icon');
+
+  return docs.map((doc) => {
+    const obj = withDifferences(doc);
+    obj.week = isoWeekLabel(new Date(obj.businessDate || obj.createdAt));
+    return obj;
+  });
 }
 
 async function getCountById(id) {
@@ -183,6 +251,8 @@ module.exports = {
   createPartialCount,
   recordClosingSnapshot,
   recordInitialCount,
+  createWeeklyCount,
+  listWeeklyCounts,
   getCountById,
   listCountsBySession,
 };

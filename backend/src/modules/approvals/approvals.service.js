@@ -1,13 +1,27 @@
 const Sale = require('../sales/sale.model');
 const HttpError = require('../../shared/httpError');
 const round2 = require('../../shared/round2');
-const { SALE_STATUSES } = require('../../shared/constants');
+const { SALE_STATUSES, SESSION_STATUSES } = require('../../shared/constants');
 const { validatePaymentsShape } = require('../payments/payments.validation');
 const { validatePaymentsMatchTotal } = require('../payments/payments.service');
 const salesService = require('../sales/sales.service');
+const inventoryService = require('../inventory/inventory.service');
 const auditService = require('../audit/audit.service');
 
 const EDITABLE_STATUSES = [SALE_STATUSES.PENDING, SALE_STATUSES.INCIDENT];
+
+// Once a session leaves OPEN (closing submitted or fully finalized), the financial/inventory
+// state it represents is frozen: no sale belonging to it can be modified until a manager
+// administratively reopens the closing (session goes back to OPEN).
+async function assertSessionEditable(sale) {
+  const session = await inventoryService.loadSessionOrFail(sale.inventorySession);
+  if (session.status !== SESSION_STATUSES.OPEN) {
+    throw new HttpError(
+      400,
+      'No se pueden modificar ventas de una sesión con cierre pendiente o finalizada. Reabre el cierre primero si es necesario.'
+    );
+  }
+}
 
 async function listPending() {
   return Sale.find({ status: SALE_STATUSES.PENDING })
@@ -34,6 +48,7 @@ function diffField(changes, field, oldValue, newValue) {
 
 async function updateSale(id, updates, managerId) {
   const sale = await loadSaleOrFail(id);
+  await assertSessionEditable(sale);
 
   if (!EDITABLE_STATUSES.includes(sale.status)) {
     throw new HttpError(400, `No se puede modificar una venta en estado ${sale.status}`);
@@ -94,6 +109,7 @@ async function updateSale(id, updates, managerId) {
 
 async function approve(id, managerId) {
   const sale = await loadSaleOrFail(id);
+  await assertSessionEditable(sale);
 
   if (!EDITABLE_STATUSES.includes(sale.status)) {
     throw new HttpError(400, `No se puede aprobar una venta en estado ${sale.status}`);
@@ -121,6 +137,7 @@ async function cancel(id, managerId, reason) {
   }
 
   const sale = await loadSaleOrFail(id);
+  await assertSessionEditable(sale);
 
   if (sale.status === SALE_STATUSES.CANCELLED || sale.status === SALE_STATUSES.APPROVED) {
     throw new HttpError(400, `No se puede cancelar una venta en estado ${sale.status}`);
@@ -151,6 +168,7 @@ async function markIncident(id, managerId, note) {
   }
 
   const sale = await loadSaleOrFail(id);
+  await assertSessionEditable(sale);
 
   if (sale.status !== SALE_STATUSES.PENDING) {
     throw new HttpError(

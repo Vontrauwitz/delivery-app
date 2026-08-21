@@ -13,6 +13,8 @@ const inventorySessionSchema = new mongoose.Schema(
   {
     vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'Vehicle', required: true },
     driver: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    // The driver's OPEN WorkShift at the moment the session was opened.
+    workShift: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkShift', required: true },
     businessDate: { type: Date, required: true },
     startedAt: { type: Date, required: true, default: Date.now },
     endedAt: { type: Date },
@@ -27,10 +29,16 @@ const inventorySessionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Only one OPEN session per vehicle at a time.
+// Only one non-CLOSED session (OPEN or CLOSING_PENDING) per vehicle at a time —
+// a vehicle isn't free for a new session until its current one is fully CLOSED.
 inventorySessionSchema.index(
   { vehicle: 1, status: 1 },
-  { unique: true, partialFilterExpression: { status: SESSION_STATUSES.OPEN } }
+  {
+    unique: true,
+    partialFilterExpression: {
+      status: { $in: [SESSION_STATUSES.OPEN, SESSION_STATUSES.CLOSING_PENDING] },
+    },
+  }
 );
 inventorySessionSchema.index({ driver: 1 });
 inventorySessionSchema.index({ businessDate: 1 });

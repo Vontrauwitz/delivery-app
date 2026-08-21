@@ -12,5 +12,6 @@ router.post('/', auth, requireRole([ROLES.DRIVER]), controller.create);
 router.get('/', ...managerOnly, controller.list);
 router.get('/:id', auth, controller.getById);
 router.patch('/:id/finalize', ...managerOnly, controller.finalize);
+router.patch('/:id/reopen', ...managerOnly, controller.reopen);
 
 module.exports = router;

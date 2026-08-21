@@ -16,3 +16,7 @@ export function getClosing(token, id) {
 export function finalizeClosing(token, id, note) {
   return request(`/closings/${id}/finalize`, { method: 'PATCH', body: { note }, token });
 }
+
+export function reopenClosing(token, id, reason) {
+  return request(`/closings/${id}/reopen`, { method: 'PATCH', body: { reason }, token });
+}

@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/modules/auth/useAuth';
 import * as productsApi from '../../src/modules/products/api';
 import * as salesApi from '../../src/modules/sales/api';
+import * as workShiftsApi from '../../src/modules/workShifts/api';
 import ProductPicker from '../../src/modules/sales/ProductPicker';
 import PaymentSplitInput from '../../src/modules/sales/PaymentSplitInput';
 import { round2, formatCurrency } from '../../src/shared/money';
@@ -15,6 +16,7 @@ export default function NewSaleScreen() {
   const [products, setProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [hasOpenShift, setHasOpenShift] = useState(true);
 
   const [quantities, setQuantities] = useState({});
   const [adjustmentAmount, setAdjustmentAmount] = useState('');
@@ -28,6 +30,7 @@ export default function NewSaleScreen() {
 
   useEffect(() => {
     loadProducts();
+    checkShift();
   }, []);
 
   async function loadProducts() {
@@ -40,6 +43,15 @@ export default function NewSaleScreen() {
       setLoadError(err.message || 'No se pudieron cargar los productos');
     } finally {
       setLoadingProducts(false);
+    }
+  }
+
+  async function checkShift() {
+    try {
+      const shift = await workShiftsApi.getMyActiveShift(token);
+      setHasOpenShift(!!shift);
+    } catch (err) {
+      setHasOpenShift(false);
     }
   }
 
@@ -60,7 +72,7 @@ export default function NewSaleScreen() {
   const paymentsMatch = paymentsSum === totalFinal;
   const needsReason = adjustmentValue !== 0;
   const reasonOk = !needsReason || adjustmentReason.trim().length > 0;
-  const canSubmit = items.length > 0 && totalFinal > 0 && paymentsMatch && reasonOk && !submitting;
+  const canSubmit = hasOpenShift && items.length > 0 && totalFinal > 0 && paymentsMatch && reasonOk && !submitting;
 
   async function handleSubmit() {
     setError('');
@@ -101,6 +113,12 @@ export default function NewSaleScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Nueva venta</Text>
+
+      {!hasOpenShift && (
+        <Text style={styles.warning}>
+          No tienes un turno activo. Inicia turno desde el panel principal para poder registrar una venta.
+        </Text>
+      )}
 
       {loadError ? <Text style={styles.error}>{loadError}</Text> : null}
 

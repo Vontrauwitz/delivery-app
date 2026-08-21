@@ -5,6 +5,7 @@ import { useAuth } from '../../src/modules/auth/useAuth';
 import * as vehiclesApi from '../../src/modules/vehicles/api';
 import * as productsApi from '../../src/modules/products/api';
 import * as inventoryApi from '../../src/modules/inventory/api';
+import * as workShiftsApi from '../../src/modules/workShifts/api';
 import QuantityStepper from '../../src/modules/inventory/QuantityStepper';
 
 export default function InventoryOpenScreen() {
@@ -15,6 +16,7 @@ export default function InventoryOpenScreen() {
   const [products, setProducts] = useState([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
   const [openSessionForVehicle, setOpenSessionForVehicle] = useState(null);
+  const [driverHasOpenShift, setDriverHasOpenShift] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -49,8 +51,10 @@ export default function InventoryOpenScreen() {
     async (vehicleId) => {
       if (!vehicleId) return;
       try {
-        const sessions = await inventoryApi.listSessions(token, { vehicle: vehicleId, status: 'OPEN' });
-        setOpenSessionForVehicle(sessions[0] || null);
+        // A vehicle isn't free for a new session until its current one is fully CLOSED —
+        // OPEN and CLOSING_PENDING both count as "active" here.
+        const sessions = await inventoryApi.listSessions(token, { vehicle: vehicleId });
+        setOpenSessionForVehicle(sessions.find((s) => s.status !== 'CLOSED') || null);
       } catch (err) {
         setOpenSessionForVehicle(null);
       }
@@ -68,6 +72,19 @@ export default function InventoryOpenScreen() {
       setInitialStock(initial);
     }
   }, [selectedVehicleId, products, checkOpenSession]);
+
+  useEffect(() => {
+    const vehicle = vehicles.find((v) => v._id === selectedVehicleId);
+    const driverId = vehicle?.assignedDriver?._id;
+    if (!driverId) {
+      setDriverHasOpenShift(true);
+      return;
+    }
+    workShiftsApi
+      .listShifts(token, { driver: driverId, status: 'OPEN' })
+      .then((shifts) => setDriverHasOpenShift(shifts.length > 0))
+      .catch(() => setDriverHasOpenShift(true));
+  }, [selectedVehicleId, vehicles, token]);
 
   async function handleOpen() {
     setError('');
@@ -130,12 +147,17 @@ export default function InventoryOpenScreen() {
       {selectedVehicle && !selectedVehicle.assignedDriver && (
         <Text style={styles.warning}>Este vehículo no tiene chofer asignado. No se podrá abrir una sesión.</Text>
       )}
+      {selectedVehicle?.assignedDriver && !driverHasOpenShift && (
+        <Text style={styles.warning}>
+          {selectedVehicle.assignedDriver.name} no tiene un turno de trabajo abierto. Debe iniciar turno antes de abrir la sesión.
+        </Text>
+      )}
 
       {openSessionForVehicle ? (
         <View style={styles.infoBox}>
-          <Text style={styles.infoText}>Ya existe una sesión abierta para este vehículo.</Text>
+          <Text style={styles.infoText}>Ya existe una sesión activa para este vehículo.</Text>
           <Pressable onPress={() => router.push(`/admin/inventory?session=${openSessionForVehicle._id}`)}>
-            <Text style={styles.link}>Ver sesión abierta →</Text>
+            <Text style={styles.link}>Ver sesión →</Text>
           </Pressable>
         </View>
       ) : (
@@ -150,7 +172,7 @@ export default function InventoryOpenScreen() {
           <Pressable
             style={[styles.button, submitting && styles.buttonDisabled]}
             onPress={handleOpen}
-            disabled={submitting || !selectedVehicle?.assignedDriver}
+            disabled={submitting || !selectedVehicle?.assignedDriver || !driverHasOpenShift}
           >
             {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Abrir sesión</Text>}
           </Pressable>

@@ -42,9 +42,9 @@ async function getMyActiveSession(req, res, next) {
       return next(new HttpError(404, 'No tienes un vehículo activo asignado'));
     }
 
-    const session = await service.getOpenSessionForVehicle(vehicle._id);
+    const session = await service.getActiveSessionForVehicle(vehicle._id);
     if (!session) {
-      return next(new HttpError(404, 'No hay una sesión de inventario abierta para tu vehículo'));
+      return next(new HttpError(404, 'No hay una sesión de inventario activa para tu vehículo'));
     }
 
     res.json(await service.getSessionById(session._id));

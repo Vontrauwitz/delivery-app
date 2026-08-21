@@ -105,15 +105,33 @@ async function createPartialCount(driverId, rawCounts) {
   });
 }
 
-// Used internally by closing.service, which owns the reportedCash/expectedCash pairing.
-async function createClosingCount(sessionId, driverId, rawCounts, createdBy) {
-  return createCount({
-    sessionId,
+// Called by closing.service while the session is still OPEN (the closing snapshot is taken
+// first, then the session is atomically frozen to CLOSING_PENDING) — so this intentionally
+// skips createCount's own OPEN-only guard, which is meant for the public /partial endpoint.
+async function recordClosingSnapshot(session, rawCounts, createdBy) {
+  const counts = normalizeCounts(rawCounts);
+  const expected = await inventoryService.computeExpectedInventory(session._id);
+  const expectedAtCountTime = expected.map((e) => ({ product: e.product, quantityExpected: e.quantityExpected }));
+
+  const doc = await InventoryCount.create({
+    vehicle: session.vehicle,
+    driver: session.driver,
+    inventorySession: session._id,
     type: INVENTORY_COUNT_TYPES.CLOSING,
-    rawCounts,
-    driverId,
+    counts,
+    expectedAtCountTime,
     createdBy,
   });
+
+  await auditService.logChange({
+    entity: 'InventoryCount',
+    entityId: doc._id,
+    action: 'CREATE',
+    changes: [{ field: 'type', oldValue: null, newValue: INVENTORY_COUNT_TYPES.CLOSING }],
+    performedBy: createdBy,
+  });
+
+  return doc;
 }
 
 function withDifferences(doc) {
@@ -163,7 +181,7 @@ async function listCountsBySession(sessionId) {
 
 module.exports = {
   createPartialCount,
-  createClosingCount,
+  recordClosingSnapshot,
   recordInitialCount,
   getCountById,
   listCountsBySession,

@@ -2,8 +2,13 @@ const InventorySession = require('./inventorySession.model');
 const Product = require('../products/product.model');
 const Sale = require('../sales/sale.model');
 const vehiclesService = require('../vehicles/vehicles.service');
+const workShiftsService = require('../workShifts/workShifts.service');
 const HttpError = require('../../shared/httpError');
-const { SESSION_STATUSES, INVENTORY_AFFECTING_SALE_STATUSES } = require('../../shared/constants');
+const {
+  SESSION_STATUSES,
+  ACTIVE_SESSION_STATUSES,
+  INVENTORY_AFFECTING_SALE_STATUSES,
+} = require('../../shared/constants');
 const auditService = require('../audit/audit.service');
 
 async function normalizeStockInput(rawStock) {
@@ -41,17 +46,35 @@ async function getOpenSessionForVehicle(vehicleId) {
   return InventorySession.findOne({ vehicle: vehicleId, status: SESSION_STATUSES.OPEN });
 }
 
-// Resolves the driver's own open session server-side. Never trust a session/vehicle id
-// coming from the client for actions a driver performs on their own session.
+// Broader than getOpenSessionForVehicle: also includes CLOSING_PENDING. Used for read-only
+// "what's my current session" views, where a driver should still see the session (and why
+// it's frozen) rather than getting a bare "not found" once a closing has been submitted.
+async function getActiveSessionForVehicle(vehicleId) {
+  return InventorySession.findOne({ vehicle: vehicleId, status: { $in: ACTIVE_SESSION_STATUSES } });
+}
+
+// Resolves the driver's own open session server-side. Never trust a session/vehicle/shift id
+// coming from the client for actions a driver performs on their own session. Requires, in
+// order: an active assigned vehicle, an OPEN WorkShift, and an OPEN InventorySession that
+// belongs to that same shift (a session opened under an earlier, now-ended shift doesn't count).
 async function getActiveSessionForDriver(driverId) {
   const vehicle = await vehiclesService.getActiveVehicleForDriver(driverId);
   if (!vehicle) {
     throw new HttpError(400, 'No tienes un vehículo activo asignado. Contacta a tu manager.');
   }
 
+  const workShift = await workShiftsService.getOpenShiftForDriver(driverId);
+  if (!workShift) {
+    throw new HttpError(400, 'Debes iniciar tu turno antes de operar.');
+  }
+
   const session = await getOpenSessionForVehicle(vehicle._id);
   if (!session) {
     throw new HttpError(400, 'No hay una sesión de inventario abierta para tu vehículo. Contacta a tu manager.');
+  }
+
+  if (String(session.workShift) !== String(workShift._id)) {
+    throw new HttpError(400, 'La sesión de inventario no corresponde a tu turno activo. Contacta a tu manager.');
   }
 
   return session;
@@ -100,9 +123,17 @@ async function openSession({ vehicleId, businessDate, initialStock, createdBy })
     throw new HttpError(400, 'El vehículo no tiene chofer asignado');
   }
 
-  const existingOpen = await getOpenSessionForVehicle(vehicle._id);
-  if (existingOpen) {
-    throw new HttpError(400, 'Ya existe una sesión de inventario abierta para este vehículo');
+  const workShift = await workShiftsService.getOpenShiftForDriver(vehicle.assignedDriver._id);
+  if (!workShift) {
+    throw new HttpError(400, 'El chofer no tiene un turno de trabajo abierto. Debe iniciar turno antes de abrir la sesión.');
+  }
+
+  const existingActive = await InventorySession.findOne({
+    vehicle: vehicle._id,
+    status: { $in: ACTIVE_SESSION_STATUSES },
+  });
+  if (existingActive) {
+    throw new HttpError(400, 'Ya existe una sesión de inventario activa para este vehículo');
   }
 
   const normalizedStock = await normalizeStockInput(initialStock);
@@ -112,6 +143,7 @@ async function openSession({ vehicleId, businessDate, initialStock, createdBy })
     session = await InventorySession.create({
       vehicle: vehicle._id,
       driver: vehicle.assignedDriver._id,
+      workShift: workShift._id,
       businessDate: businessDate ? new Date(businessDate) : new Date(),
       startedAt: new Date(),
       status: SESSION_STATUSES.OPEN,
@@ -120,7 +152,7 @@ async function openSession({ vehicleId, businessDate, initialStock, createdBy })
     });
   } catch (err) {
     if (err.code === 11000) {
-      throw new HttpError(400, 'Ya existe una sesión de inventario abierta para este vehículo');
+      throw new HttpError(400, 'Ya existe una sesión de inventario activa para este vehículo');
     }
     throw err;
   }
@@ -165,11 +197,55 @@ async function updateInitialStock(sessionId, rawStock, managerId) {
   return getSessionById(session._id);
 }
 
+// Called by closing.service right after the driver submits a Closing, so the session
+// (and the financial/inventory state it represents) is frozen before anything else can
+// touch it. Uses an atomic conditional update so two concurrent submissions can't both win.
+async function transitionToClosingPending(sessionId) {
+  return InventorySession.findOneAndUpdate(
+    { _id: sessionId, status: SESSION_STATUSES.OPEN },
+    { $set: { status: SESSION_STATUSES.CLOSING_PENDING } },
+    { new: true }
+  );
+}
+
+// Best-effort rollback if creating the Closing record fails right after the session was
+// frozen — not audited, since it isn't a real state the system settled into.
+async function revertToOpen(sessionId) {
+  await InventorySession.updateOne(
+    { _id: sessionId, status: SESSION_STATUSES.CLOSING_PENDING },
+    { $set: { status: SESSION_STATUSES.OPEN } }
+  );
+}
+
+// Administrative reopen: a manager sends a CLOSING_PENDING session back to OPEN so the
+// driver's mistake can be corrected. Only valid from CLOSING_PENDING.
+async function reopenSession(sessionId, managerId) {
+  const updated = await InventorySession.findOneAndUpdate(
+    { _id: sessionId, status: SESSION_STATUSES.CLOSING_PENDING },
+    { $set: { status: SESSION_STATUSES.OPEN } },
+    { new: true }
+  );
+
+  if (!updated) {
+    throw new HttpError(400, 'La sesión no está en estado de cierre pendiente');
+  }
+
+  await auditService.logChange({
+    entity: 'InventorySession',
+    entityId: updated._id,
+    action: 'UPDATE',
+    changes: [{ field: 'status', oldValue: SESSION_STATUSES.CLOSING_PENDING, newValue: SESSION_STATUSES.OPEN }],
+    performedBy: managerId,
+  });
+
+  return updated;
+}
+
 async function closeSession(sessionId, managerId) {
   const session = await loadSessionOrFail(sessionId);
 
-  if (session.status === SESSION_STATUSES.CLOSED) {
-    throw new HttpError(400, 'La sesión ya está cerrada');
+  if (session.status !== SESSION_STATUSES.CLOSING_PENDING) {
+    throw new HttpError(400, `No se puede finalizar una sesión en estado ${session.status}`);
   }
 
   session.status = SESSION_STATUSES.CLOSED;
@@ -180,7 +256,7 @@ async function closeSession(sessionId, managerId) {
     entity: 'InventorySession',
     entityId: session._id,
     action: 'CLOSE',
-    changes: [{ field: 'status', oldValue: SESSION_STATUSES.OPEN, newValue: SESSION_STATUSES.CLOSED }],
+    changes: [{ field: 'status', oldValue: SESSION_STATUSES.CLOSING_PENDING, newValue: SESSION_STATUSES.CLOSED }],
     performedBy: managerId,
   });
 
@@ -225,6 +301,7 @@ async function getExpectedInventoryWithProducts(sessionId) {
 
 module.exports = {
   getOpenSessionForVehicle,
+  getActiveSessionForVehicle,
   getActiveSessionForDriver,
   loadSessionOrFail,
   getSessionById,
@@ -232,6 +309,9 @@ module.exports = {
   openSession,
   updateInitialStock,
   getExpectedInventoryWithProducts,
+  transitionToClosingPending,
+  revertToOpen,
+  reopenSession,
   closeSession,
   computeExpectedInventory,
 };

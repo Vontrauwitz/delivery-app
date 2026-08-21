@@ -50,4 +50,13 @@ async function finalize(req, res, next) {
   }
 }
 
-module.exports = { create, list, getById, finalize };
+async function reopen(req, res, next) {
+  try {
+    const closing = await service.reopenClosing(req.params.id, req.user.id, req.body.reason);
+    res.json(closing);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { create, list, getById, finalize, reopen };

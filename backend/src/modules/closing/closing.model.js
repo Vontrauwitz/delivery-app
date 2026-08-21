@@ -5,7 +5,9 @@ const closingSchema = new mongoose.Schema(
   {
     vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'Vehicle', required: true },
     driver: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    inventorySession: { type: mongoose.Schema.Types.ObjectId, ref: 'InventorySession', required: true, unique: true },
+    // Not unique: a REOPENED closing stays as a frozen historical record, and the driver's
+    // resubmission creates a new Closing document referencing the same session.
+    inventorySession: { type: mongoose.Schema.Types.ObjectId, ref: 'InventorySession', required: true },
     inventoryCount: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryCount', required: true },
     date: { type: Date, required: true },
     expectedCash: { type: Number, required: true },
@@ -14,6 +16,9 @@ const closingSchema = new mongoose.Schema(
     managerNote: { type: String, default: '' },
     closedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     closedAt: { type: Date },
+    reopenedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    reopenedAt: { type: Date },
+    reopenReason: { type: String, default: '' },
     status: {
       type: String,
       enum: Object.values(CLOSING_STATUSES),
@@ -26,5 +31,6 @@ const closingSchema = new mongoose.Schema(
 closingSchema.index({ vehicle: 1 });
 closingSchema.index({ driver: 1 });
 closingSchema.index({ status: 1 });
+closingSchema.index({ inventorySession: 1 });
 
 module.exports = mongoose.model('Closing', closingSchema);

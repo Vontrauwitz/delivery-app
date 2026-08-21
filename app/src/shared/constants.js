@@ -20,12 +20,14 @@ export const SALE_STATUS_COLORS = {
 
 export const SESSION_STATUS_LABELS = {
   OPEN: 'Abierta',
+  CLOSING_PENDING: 'Cierre pendiente',
   CLOSED: 'Cerrada',
 };
 
 export const CLOSING_STATUS_LABELS = {
   OPEN: 'Pendiente de revisión',
   CLOSED: 'Finalizado',
+  REOPENED: 'Reabierto',
 };
 
 export const COUNT_TYPE_LABELS = {
@@ -33,4 +35,9 @@ export const COUNT_TYPE_LABELS = {
   PARTIAL: 'Parcial',
   CLOSING: 'Cierre',
   WEEKLY: 'Semanal',
+};
+
+export const SHIFT_STATUS_LABELS = {
+  OPEN: 'Activo',
+  CLOSED: 'Finalizado',
 };

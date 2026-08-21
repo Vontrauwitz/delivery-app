@@ -4,6 +4,7 @@ import { useAuth } from '../../src/modules/auth/useAuth';
 import * as inventoryApi from '../../src/modules/inventory/api';
 import * as inventoryCountsApi from '../../src/modules/inventoryCounts/api';
 import * as closingApi from '../../src/modules/closing/api';
+import * as workShiftsApi from '../../src/modules/workShifts/api';
 import QuantityStepper from '../../src/modules/inventory/QuantityStepper';
 import { formatCurrency } from '../../src/shared/money';
 import { SESSION_STATUS_LABELS } from '../../src/shared/constants';
@@ -15,6 +16,7 @@ export default function DriverInventoryScreen() {
   const [expected, setExpected] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [hasOpenShift, setHasOpenShift] = useState(true);
 
   const [mode, setMode] = useState('idle'); // idle | partial | closing
   const [partialQuantities, setPartialQuantities] = useState({});
@@ -33,6 +35,9 @@ export default function DriverInventoryScreen() {
     setLoading(true);
     setLoadError('');
     try {
+      const shift = await workShiftsApi.getMyActiveShift(token);
+      setHasOpenShift(!!shift);
+
       const sessionData = await inventoryApi.getMyActiveSession(token);
       setSession(sessionData);
       const expectedData = await inventoryApi.getExpectedInventory(token, sessionData._id);
@@ -159,12 +164,30 @@ export default function DriverInventoryScreen() {
         </View>
       ))}
 
+      {session.status === 'CLOSING_PENDING' && (
+        <Text style={styles.warning}>
+          Ya enviaste el cierre de esta sesión. Está congelada a la espera de revisión del manager.
+        </Text>
+      )}
+
+      {session.status === 'OPEN' && !hasOpenShift && (
+        <Text style={styles.warning}>No tienes un turno activo. Inicia turno para poder operar el inventario.</Text>
+      )}
+
       {session.status === 'OPEN' && (
         <View style={styles.actionsRow}>
-          <Pressable style={styles.actionButton} onPress={startPartial}>
+          <Pressable
+            style={[styles.actionButton, !hasOpenShift && styles.actionButtonDisabled]}
+            onPress={startPartial}
+            disabled={!hasOpenShift}
+          >
             <Text style={styles.actionButtonText}>Conteo parcial</Text>
           </Pressable>
-          <Pressable style={[styles.actionButton, styles.closingButton]} onPress={startClosing}>
+          <Pressable
+            style={[styles.actionButton, styles.closingButton, !hasOpenShift && styles.actionButtonDisabled]}
+            onPress={startClosing}
+            disabled={!hasOpenShift}
+          >
             <Text style={styles.actionButtonText}>Cerrar jornada</Text>
           </Pressable>
         </View>
@@ -280,6 +303,7 @@ const styles = StyleSheet.create({
   expectedQty: { fontSize: 14, fontWeight: '700' },
   actionsRow: { flexDirection: 'row', gap: 8, marginTop: 20 },
   actionButton: { flex: 1, backgroundColor: '#2563eb', borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
+  actionButtonDisabled: { backgroundColor: '#93c5fd' },
   closingButton: { backgroundColor: '#16a34a' },
   actionButtonText: { color: '#fff', fontWeight: '600' },
   formBox: { marginTop: 20, padding: 12, backgroundColor: '#f9fafb', borderRadius: 10 },
@@ -295,6 +319,7 @@ const styles = StyleSheet.create({
   button: { backgroundColor: '#2563eb', borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
   buttonText: { color: '#fff', fontWeight: '600', fontSize: 16 },
   error: { color: '#dc2626', marginBottom: 8 },
+  warning: { color: '#dc2626', fontSize: 13, marginTop: 12 },
   resultBox: { marginTop: 16, padding: 12, backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#e5e5e5' },
   resultTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
   diffRow: { marginBottom: 6 },

@@ -1,4 +1,4 @@
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuth } from '../../src/modules/auth/useAuth';
 
@@ -6,11 +6,11 @@ export default function AdminHome() {
   const { user, signOut } = useAuth();
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Hola, {user?.name}</Text>
       <Text style={styles.subtitle}>Panel administrativo</Text>
       <Text style={styles.info}>
-        Revisa y autoriza las ventas de los choferes. Inventarios, cierres y más llegarán en próximas fases.
+        Revisa y autoriza las ventas de los choferes, administra inventario, cierres y turnos.
       </Text>
 
       <Link href="/admin/sales-pending" asChild>
@@ -37,19 +37,27 @@ export default function AdminHome() {
         </Pressable>
       </Link>
 
+      <Link href="/admin/shifts" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Turnos</Text>
+        </Pressable>
+      </Link>
+
       <Pressable style={styles.button} onPress={signOut}>
         <Text style={styles.buttonText}>Cerrar sesión</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
-    justifyContent: 'center',
     backgroundColor: '#fff',
+  },
+  content: {
+    padding: 24,
+    paddingBottom: 40,
   },
   title: {
     fontSize: 24,

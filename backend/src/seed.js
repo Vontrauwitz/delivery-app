@@ -50,7 +50,8 @@ async function seed() {
   }
 
   console.log('Seed completado: 1 manager, 1 driver, 1 vehículo (asignado al driver), 3 productos.');
-  console.log('Nota: abre una InventorySession (POST /inventory-sessions) para que el chofer pueda vender.');
+  console.log('Nota: el chofer debe iniciar turno (POST /work-shifts/start) y el manager debe abrir');
+  console.log('una InventorySession (POST /inventory-sessions) antes de poder vender.');
   await mongoose.disconnect();
 }
 

@@ -3,6 +3,7 @@ import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuth } from '../../src/modules/auth/useAuth';
 import WorkStatusCard from '../../src/modules/workShifts/WorkStatusCard';
+import LocationStatusCard from '../../src/modules/locations/LocationStatusCard';
 
 export default function DriverHome() {
   const { user, token, signOut } = useAuth();
@@ -18,6 +19,7 @@ export default function DriverHome() {
       <Text style={styles.subtitle}>Panel del chofer</Text>
 
       <WorkStatusCard token={token} onShiftChange={handleShiftChange} />
+      <LocationStatusCard token={token} />
 
       <Link href="/driver/new-sale" asChild>
         <Pressable style={hasOpenShift ? styles.actionButton : styles.actionButtonWaiting}>
@@ -35,6 +37,18 @@ export default function DriverHome() {
       <Link href="/driver/inventory" asChild>
         <Pressable style={styles.actionButtonSecondary}>
           <Text style={styles.actionButtonSecondaryText}>Inventario</Text>
+        </Pressable>
+      </Link>
+
+      <Link href="/driver/inbox" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Mensajes</Text>
+        </Pressable>
+      </Link>
+
+      <Link href="/driver/dispatch" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Dispatch</Text>
         </Pressable>
       </Link>
 

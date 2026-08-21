@@ -48,8 +48,9 @@ async function assertServerReachable() {
 }
 
 // Clears the collections seed.js doesn't touch itself (Sale/InventorySession/InventoryCount/
-// Closing/WorkShift/AuditLog), then re-runs the normal seed script for a clean, deterministic
-// starting point: 1 manager, 1 driver, 1 vehicle assigned to the driver, 3 products.
+// Closing/WorkShift/AuditLog/ReplenishmentConfig/LocationPing/Message/Dispatch), then re-runs
+// the normal seed script for a clean, deterministic starting point: 1 manager, 1 driver, 1
+// vehicle assigned to the driver, 3 products.
 async function resetAndSeed() {
   await mongoose.connect(MONGO_URI);
   await mongoose.connection.db.collection('sales').deleteMany({});
@@ -58,9 +59,35 @@ async function resetAndSeed() {
   await mongoose.connection.db.collection('closings').deleteMany({});
   await mongoose.connection.db.collection('workshifts').deleteMany({});
   await mongoose.connection.db.collection('auditlogs').deleteMany({});
+  await mongoose.connection.db.collection('replenishmentconfigs').deleteMany({});
+  await mongoose.connection.db.collection('locationpings').deleteMany({});
+  await mongoose.connection.db.collection('messages').deleteMany({});
+  await mongoose.connection.db.collection('dispatches').deleteMany({});
   await mongoose.disconnect();
 
   execSync('node src/seed.js', { cwd: BACKEND_ROOT, stdio: 'ignore' });
+}
+
+// Runs fn with a live mongoose connection (for direct model access — e.g. seeding a second
+// driver, or backdating a document's timestamp for a deterministic test — things the HTTP API
+// has no route for), then disconnects. Not for use while resetAndSeed/the server itself might
+// be connecting concurrently — these test suites are sequential, never run in parallel.
+async function runDbTask(fn) {
+  await mongoose.connect(MONGO_URI);
+  try {
+    return await fn(mongoose);
+  } finally {
+    await mongoose.disconnect();
+  }
+}
+
+// Creates an additional user directly (there's no public registration endpoint — users are
+// provisioned by seed/admin scripts only). Used by tests that need a second driver.
+async function createExtraUser({ name, email, password = '123456', role }) {
+  return runDbTask(async () => {
+    const { createUser } = require(path.join(BACKEND_ROOT, 'src/modules/users/users.service'));
+    return createUser({ name, email, password, role });
+  });
 }
 
 // Selects a seeded product by its stable `name`, never by array position — Product.create()
@@ -84,4 +111,14 @@ function finish() {
   }
 }
 
-module.exports = { assert, req, assertServerReachable, resetAndSeed, findProductByName, finish, BASE };
+module.exports = {
+  assert,
+  req,
+  assertServerReachable,
+  resetAndSeed,
+  findProductByName,
+  finish,
+  BASE,
+  runDbTask,
+  createExtraUser,
+};

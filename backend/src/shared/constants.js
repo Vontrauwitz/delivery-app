@@ -70,6 +70,21 @@ const REPLENISHMENT_CONSUMPTION_WINDOW_SESSIONS = 7;
 // the response, so the UI can warn the manager the suggestion is based on thin data.
 const REPLENISHMENT_MIN_HISTORY_SESSIONS = 3;
 
+// A location ping older than this is considered stale. Never stored as a boolean on the
+// ping itself — always computed at read time against "now", same reasoning as PLAN.md's
+// isStale note: a stored flag would go stale itself the moment nobody recomputes it.
+const LOCATION_STALE_THRESHOLD_MS = 5 * 60 * 1000;
+
+// PENDING: created by manager, waiting on the driver.
+// ACCEPTED: driver has acknowledged it.
+// COMPLETED / CANCELLED: terminal, permanent.
+const DISPATCH_STATUSES = {
+  PENDING: 'PENDING',
+  ACCEPTED: 'ACCEPTED',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+};
+
 module.exports = {
   ROLES,
   PAYMENT_METHODS,
@@ -83,4 +98,6 @@ module.exports = {
   REPLENISHMENT_DEFAULTS,
   REPLENISHMENT_CONSUMPTION_WINDOW_SESSIONS,
   REPLENISHMENT_MIN_HISTORY_SESSIONS,
+  LOCATION_STALE_THRESHOLD_MS,
+  DISPATCH_STATUSES,
 };

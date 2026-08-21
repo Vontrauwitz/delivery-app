@@ -41,3 +41,17 @@ export const SHIFT_STATUS_LABELS = {
   OPEN: 'Activo',
   CLOSED: 'Finalizado',
 };
+
+export const DISPATCH_STATUS_LABELS = {
+  PENDING: 'Pendiente',
+  ACCEPTED: 'Aceptado',
+  COMPLETED: 'Completado',
+  CANCELLED: 'Cancelado',
+};
+
+export const DISPATCH_STATUS_COLORS = {
+  PENDING: '#d97706',
+  ACCEPTED: '#2563eb',
+  COMPLETED: '#16a34a',
+  CANCELLED: '#6b7280',
+};

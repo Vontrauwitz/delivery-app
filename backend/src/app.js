@@ -12,6 +12,9 @@ const inventoryCountsRoutes = require('./modules/inventoryCounts/inventoryCounts
 const closingRoutes = require('./modules/closing/closing.routes');
 const workShiftsRoutes = require('./modules/workShifts/workShifts.routes');
 const replenishmentRoutes = require('./modules/replenishment/replenishment.routes');
+const locationsRoutes = require('./modules/locations/locations.routes');
+const messagingRoutes = require('./modules/messaging/messaging.routes');
+const dispatchRoutes = require('./modules/dispatch/dispatch.routes');
 const errorHandler = require('./middlewares/errorHandler');
 
 const app = express();
@@ -33,6 +36,9 @@ app.use('/inventory-counts', inventoryCountsRoutes);
 app.use('/closings', closingRoutes);
 app.use('/work-shifts', workShiftsRoutes);
 app.use('/replenishment', replenishmentRoutes);
+app.use('/locations', locationsRoutes);
+app.use('/messaging', messagingRoutes);
+app.use('/dispatch', dispatchRoutes);
 
 app.use(errorHandler);
 

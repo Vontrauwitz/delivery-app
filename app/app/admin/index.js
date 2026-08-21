@@ -61,6 +61,24 @@ export default function AdminHome() {
         </Pressable>
       </Link>
 
+      <Link href="/admin/drivers-map" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Choferes activos</Text>
+        </Pressable>
+      </Link>
+
+      <Link href="/admin/messages" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Mensajes</Text>
+        </Pressable>
+      </Link>
+
+      <Link href="/admin/dispatch" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Dispatch</Text>
+        </Pressable>
+      </Link>
+
       <Pressable style={styles.button} onPress={signOut}>
         <Text style={styles.buttonText}>Cerrar sesión</Text>
       </Pressable>

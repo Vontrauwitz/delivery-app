@@ -5,7 +5,7 @@ const auditLogSchema = new mongoose.Schema({
   entityId: { type: mongoose.Schema.Types.ObjectId, required: true },
   action: {
     type: String,
-    enum: ['CREATE', 'UPDATE', 'APPROVE', 'CANCEL', 'MARK_INCIDENT'],
+    enum: ['CREATE', 'UPDATE', 'APPROVE', 'CANCEL', 'MARK_INCIDENT', 'CLOSE'],
     required: true,
   },
   changes: [

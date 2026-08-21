@@ -19,6 +19,24 @@ export default function AdminHome() {
         </Pressable>
       </Link>
 
+      <Link href="/admin/inventory" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Inventario</Text>
+        </Pressable>
+      </Link>
+
+      <Link href="/admin/inventory-open" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Abrir sesión</Text>
+        </Pressable>
+      </Link>
+
+      <Link href="/admin/closings" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Cierres</Text>
+        </Pressable>
+      </Link>
+
       <Pressable style={styles.button} onPress={signOut}>
         <Text style={styles.buttonText}>Cerrar sesión</Text>
       </Pressable>
@@ -53,10 +71,23 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 14,
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 12,
   },
   actionButtonText: {
     color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  actionButtonSecondary: {
+    borderWidth: 1,
+    borderColor: '#2563eb',
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  actionButtonSecondaryText: {
+    color: '#2563eb',
     fontWeight: '600',
     fontSize: 16,
   },

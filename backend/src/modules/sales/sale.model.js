@@ -22,6 +22,8 @@ const paymentSchema = new mongoose.Schema(
 const saleSchema = new mongoose.Schema(
   {
     driver: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'Vehicle', required: true },
+    inventorySession: { type: mongoose.Schema.Types.ObjectId, ref: 'InventorySession', required: true },
     items: { type: [saleItemSchema], required: true },
     subtotalOriginal: { type: Number, required: true, min: 0 },
     adjustment: {
@@ -53,5 +55,11 @@ const saleSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+saleSchema.index({ driver: 1 });
+saleSchema.index({ vehicle: 1 });
+saleSchema.index({ inventorySession: 1 });
+saleSchema.index({ status: 1 });
+saleSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Sale', saleSchema);

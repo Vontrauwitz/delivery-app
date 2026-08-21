@@ -25,6 +25,12 @@ export default function DriverHome() {
         </Pressable>
       </Link>
 
+      <Link href="/driver/inventory" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Inventario</Text>
+        </Pressable>
+      </Link>
+
       <Pressable style={styles.button} onPress={signOut}>
         <Text style={styles.buttonText}>Cerrar sesión</Text>
       </Pressable>

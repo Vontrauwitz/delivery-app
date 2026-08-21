@@ -6,6 +6,7 @@ const { SALE_STATUSES } = require('../../shared/constants');
 const { validatePaymentsShape } = require('../payments/payments.validation');
 const { validatePaymentsMatchTotal } = require('../payments/payments.service');
 const auditService = require('../audit/audit.service');
+const inventoryService = require('../inventory/inventory.service');
 
 async function buildItemsFromRequest(rawItems) {
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
@@ -44,6 +45,10 @@ function buildAdjustment(rawAdjustment) {
 }
 
 async function createSale({ driverId, items: rawItems, adjustment: rawAdjustment, payments }) {
+  // Vehicle and session are resolved from the driver's own assignment/open session —
+  // never trusted from the client — so a sale can't be filed against another vehicle.
+  const session = await inventoryService.getActiveSessionForDriver(driverId);
+
   const items = await buildItemsFromRequest(rawItems);
   const subtotalOriginal = round2(items.reduce((sum, item) => sum + item.subtotal, 0));
   const adjustment = buildAdjustment(rawAdjustment);
@@ -56,6 +61,8 @@ async function createSale({ driverId, items: rawItems, adjustment: rawAdjustment
 
   const sale = await Sale.create({
     driver: driverId,
+    vehicle: session.vehicle,
+    inventorySession: session._id,
     items,
     subtotalOriginal,
     adjustment,
@@ -83,6 +90,8 @@ async function listSalesByDriver(driverId) {
 async function getSaleById(id) {
   const sale = await Sale.findById(id)
     .populate('driver', 'name email')
+    .populate('vehicle', 'name')
+    .populate('inventorySession', 'businessDate status')
     .populate('createdBy', 'name email')
     .populate('items.product', 'name icon basePrice')
     .populate('approval.approvedBy', 'name email')

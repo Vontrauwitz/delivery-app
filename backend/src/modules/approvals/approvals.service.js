@@ -13,6 +13,7 @@ async function listPending() {
   return Sale.find({ status: SALE_STATUSES.PENDING })
     .sort({ createdAt: 1 })
     .populate('driver', 'name email')
+    .populate('vehicle', 'name')
     .populate('createdBy', 'name email')
     .populate('items.product', 'name icon basePrice');
 }

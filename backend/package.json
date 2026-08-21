@@ -7,7 +7,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "seed": "node src/seed.js"
+    "seed": "node src/seed.js",
+    "test:e2e:phase2": "node test/e2e-phase2.js",
+    "test:e2e:workshift": "node test/e2e-workshift.js",
+    "test:e2e": "npm run test:e2e:phase2 && npm run test:e2e:workshift"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

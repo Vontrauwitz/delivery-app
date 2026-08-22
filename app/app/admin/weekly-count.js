@@ -5,6 +5,7 @@ import * as vehiclesApi from '../../src/modules/vehicles/api';
 import * as productsApi from '../../src/modules/products/api';
 import * as inventoryCountsApi from '../../src/modules/inventoryCounts/api';
 import QuantityStepper from '../../src/modules/inventory/QuantityStepper';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 export default function WeeklyCountScreen() {
   const { token } = useAuth();
@@ -66,15 +67,20 @@ export default function WeeklyCountScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator />
+      <View style={styles.container}>
+        <View style={styles.content}>
+          <ScreenHeader title="Conteo semanal" backHref="/admin" />
+        </View>
+        <View style={styles.center}>
+          <ActivityIndicator />
+        </View>
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Conteo semanal</Text>
+      <ScreenHeader title="Conteo semanal" backHref="/admin" onRefresh={load} refreshing={loading} />
 
       <Text style={styles.sectionTitle}>Vehículo</Text>
       <View style={styles.vehicleRow}>
@@ -130,7 +136,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 60 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 16 },
   sectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8 },
   vehicleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   vehicleChip: { borderWidth: 1, borderColor: '#2563eb', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },

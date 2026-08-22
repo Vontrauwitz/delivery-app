@@ -4,6 +4,7 @@ import { useAuth } from '../../src/modules/auth/useAuth';
 import * as closingApi from '../../src/modules/closing/api';
 import { formatCurrency } from '../../src/shared/money';
 import { CLOSING_STATUS_LABELS } from '../../src/shared/constants';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 const CLOSING_STATUS_COLORS = {
   OPEN: '#d97706',
@@ -75,19 +76,14 @@ export default function ClosingsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Cierres</Text>
-        <Pressable onPress={load}>
-          <Text style={styles.refresh}>Actualizar</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader title="Cierres" backHref="/admin" onRefresh={load} refreshing={loading} />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: 20 }} />
       ) : closings.length === 0 ? (
-        <Text style={styles.empty}>No hay cierres registrados.</Text>
+        <Text style={styles.empty}>No hay cierres registrados. Los cierres aparecen aquí cuando un chofer envía uno.</Text>
       ) : (
         closings.map((c) => (
           <Pressable
@@ -171,9 +167,6 @@ export default function ClosingsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 60 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 22, fontWeight: 'bold' },
-  refresh: { color: '#2563eb', fontSize: 14 },
   error: { color: '#dc2626', marginBottom: 8 },
   empty: { color: '#666', marginTop: 20, textAlign: 'center' },
   card: { borderWidth: 1, borderColor: '#e5e5e5', borderRadius: 10, padding: 12, marginBottom: 10 },

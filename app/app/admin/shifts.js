@@ -4,6 +4,7 @@ import { useAuth } from '../../src/modules/auth/useAuth';
 import * as workShiftsApi from '../../src/modules/workShifts/api';
 import { formatDurationMs } from '../../src/shared/duration';
 import { SHIFT_STATUS_LABELS } from '../../src/shared/constants';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 function toLocalInputValue(dateStr) {
   if (!dateStr) return '';
@@ -17,6 +18,7 @@ export default function ShiftsScreen() {
   const [shifts, setShifts] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [error, setError] = useState('');
 
   const [startedAtInput, setStartedAtInput] = useState('');
@@ -26,12 +28,12 @@ export default function ShiftsScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    setLoadError('');
     try {
       const data = await workShiftsApi.listShifts(token);
       setShifts(data);
     } catch (err) {
-      setError(err.message || 'No se pudieron cargar los turnos');
+      setLoadError(err.message || 'No se pudieron cargar los turnos');
     } finally {
       setLoading(false);
     }
@@ -101,17 +103,14 @@ export default function ShiftsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Turnos</Text>
-        <Pressable onPress={load}>
-          <Text style={styles.refresh}>Actualizar</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader title="Turnos" backHref="/admin" onRefresh={load} refreshing={loading} />
+
+      {loadError ? <Text style={styles.error}>{loadError}</Text> : null}
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: 20 }} />
-      ) : shifts.length === 0 ? (
-        <Text style={styles.empty}>No hay turnos registrados.</Text>
+      ) : shifts.length === 0 && !loadError ? (
+        <Text style={styles.empty}>No hay turnos registrados. Aparecerán aquí cuando un chofer inicie uno.</Text>
       ) : (
         shifts.map((shift) => (
           <Pressable
@@ -182,14 +181,11 @@ export default function ShiftsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 60 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 22, fontWeight: 'bold' },
-  refresh: { color: '#2563eb', fontSize: 14 },
   empty: { color: '#666', marginTop: 20, textAlign: 'center' },
   card: { borderWidth: 1, borderColor: '#e5e5e5', borderRadius: 10, padding: 12, marginBottom: 10 },
   cardActive: { borderColor: '#2563eb' },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  driver: { fontSize: 15, fontWeight: '600' },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
+  driver: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
   status: { fontSize: 13, fontWeight: '600', color: '#6b7280' },
   statusOpen: { color: '#16a34a' },
   line: { fontSize: 12, color: '#666' },

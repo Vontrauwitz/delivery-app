@@ -4,6 +4,7 @@ import { useAuth } from '../../src/modules/auth/useAuth';
 import * as salesApi from '../../src/modules/sales/api';
 import { formatCurrency } from '../../src/shared/money';
 import { SALE_STATUS_LABELS, SALE_STATUS_COLORS } from '../../src/shared/constants';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 export default function MySalesScreen() {
   const { token } = useAuth();
@@ -30,12 +31,7 @@ export default function MySalesScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Mis ventas</Text>
-        <Pressable onPress={load}>
-          <Text style={styles.refresh}>Actualizar</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader title="Mis ventas" backHref="/driver" onRefresh={load} refreshing={loading} />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -67,9 +63,6 @@ export default function MySalesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', padding: 20 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 22, fontWeight: 'bold' },
-  refresh: { color: '#2563eb', fontSize: 14 },
   error: { color: '#dc2626', marginBottom: 8 },
   empty: { color: '#666', marginTop: 20, textAlign: 'center' },
   list: { paddingBottom: 20 },
@@ -80,7 +73,7 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 10,
   },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
   total: { fontSize: 18, fontWeight: '700' },
   status: { fontSize: 14, fontWeight: '600' },
   date: { fontSize: 13, color: '#666' },

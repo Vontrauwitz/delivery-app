@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TextInput, Pressable, StyleSheet, ActivityIndic
 import { useAuth } from '../../src/modules/auth/useAuth';
 import * as usersApi from '../../src/modules/users/api';
 import * as messagingApi from '../../src/modules/messaging/api';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 export default function MessagesScreen() {
   const { token } = useAuth();
@@ -75,7 +76,15 @@ export default function MessagesScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Mensajes</Text>
+      <ScreenHeader
+        title="Mensajes"
+        backHref="/admin"
+        onRefresh={() => {
+          loadDrivers();
+          loadSent();
+        }}
+        refreshing={loadingSent}
+      />
 
       <Text style={styles.sectionTitle}>Destinatarios</Text>
       <View style={styles.driverRow}>
@@ -133,7 +142,6 @@ export default function MessagesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 60 },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 12 },
   sectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8 },
   driverRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   driverChip: { borderWidth: 1, borderColor: '#2563eb', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },

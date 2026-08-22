@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { useAuth } from '../../src/modules/auth/useAuth';
 import * as messagingApi from '../../src/modules/messaging/api';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 export default function InboxScreen() {
   const { token } = useAuth();
@@ -40,14 +41,16 @@ export default function InboxScreen() {
     }
   }
 
+  const unreadCount = messages.filter((m) => !m.isRead).length;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Mensajes</Text>
-        <Pressable onPress={load}>
-          <Text style={styles.refresh}>Actualizar</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader
+        title={unreadCount > 0 ? `Mensajes (${unreadCount} sin leer)` : 'Mensajes'}
+        backHref="/driver"
+        onRefresh={load}
+        refreshing={loading}
+      />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -76,15 +79,12 @@ export default function InboxScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 60 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 22, fontWeight: 'bold' },
-  refresh: { color: '#2563eb', fontSize: 14 },
   error: { color: '#dc2626', marginBottom: 8 },
   empty: { color: '#666', marginTop: 20, textAlign: 'center' },
   card: { borderWidth: 1, borderColor: '#e5e5e5', borderRadius: 10, padding: 12, marginBottom: 10 },
   cardActive: { borderColor: '#2563eb' },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  subject: { fontSize: 15, fontWeight: '500' },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  subject: { fontSize: 15, fontWeight: '500', flexShrink: 1 },
   subjectUnread: { fontWeight: '700' },
   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#2563eb' },
   meta: { fontSize: 12, color: '#666', marginTop: 2 },

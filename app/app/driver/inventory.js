@@ -8,6 +8,7 @@ import * as workShiftsApi from '../../src/modules/workShifts/api';
 import QuantityStepper from '../../src/modules/inventory/QuantityStepper';
 import { formatCurrency } from '../../src/shared/money';
 import { SESSION_STATUS_LABELS } from '../../src/shared/constants';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 export default function DriverInventoryScreen() {
   const { token } = useAuth();
@@ -129,23 +130,23 @@ export default function DriverInventoryScreen() {
 
   if (!session) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.error}>{loadError}</Text>
-        <Pressable onPress={load} style={{ marginTop: 12 }}>
-          <Text style={styles.refresh}>Reintentar</Text>
-        </Pressable>
+      <View style={styles.container}>
+        <View style={styles.content}>
+          <ScreenHeader title="Inventario" backHref="/driver" />
+        </View>
+        <View style={styles.center}>
+          <Text style={styles.error}>{loadError}</Text>
+          <Pressable onPress={load} style={{ marginTop: 12 }}>
+            <Text style={styles.refresh}>Reintentar</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Inventario</Text>
-        <Pressable onPress={load}>
-          <Text style={styles.refresh}>Actualizar</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader title="Inventario" backHref="/driver" onRefresh={load} refreshing={loading} />
 
       <View style={styles.sessionBox}>
         <Text style={styles.sessionLine}>
@@ -286,8 +287,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 60 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 22, fontWeight: 'bold' },
   refresh: { color: '#2563eb', fontSize: 14 },
   sessionBox: { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 12, marginBottom: 16 },
   sessionLine: { fontSize: 13, color: '#333', marginBottom: 2 },

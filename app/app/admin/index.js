@@ -19,60 +19,58 @@ export default function AdminHome() {
         </Pressable>
       </Link>
 
+      <Text style={styles.sectionTitle}>Inventario</Text>
       <Link href="/admin/inventory" asChild>
         <Pressable style={styles.actionButtonSecondary}>
           <Text style={styles.actionButtonSecondaryText}>Inventario</Text>
         </Pressable>
       </Link>
-
       <Link href="/admin/inventory-open" asChild>
         <Pressable style={styles.actionButtonSecondary}>
           <Text style={styles.actionButtonSecondaryText}>Abrir sesión</Text>
         </Pressable>
       </Link>
-
-      <Link href="/admin/closings" asChild>
-        <Pressable style={styles.actionButtonSecondary}>
-          <Text style={styles.actionButtonSecondaryText}>Cierres</Text>
-        </Pressable>
-      </Link>
-
-      <Link href="/admin/shifts" asChild>
-        <Pressable style={styles.actionButtonSecondary}>
-          <Text style={styles.actionButtonSecondaryText}>Turnos</Text>
-        </Pressable>
-      </Link>
-
-      <Link href="/admin/replenishment" asChild>
-        <Pressable style={styles.actionButtonSecondary}>
-          <Text style={styles.actionButtonSecondaryText}>Reabastecimiento</Text>
-        </Pressable>
-      </Link>
-
       <Link href="/admin/weekly-count" asChild>
         <Pressable style={styles.actionButtonSecondary}>
           <Text style={styles.actionButtonSecondaryText}>Conteo semanal</Text>
         </Pressable>
       </Link>
 
+      <Text style={styles.sectionTitle}>Turnos y cierres</Text>
+      <Link href="/admin/shifts" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Turnos</Text>
+        </Pressable>
+      </Link>
+      <Link href="/admin/closings" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Cierres</Text>
+        </Pressable>
+      </Link>
+
+      <Text style={styles.sectionTitle}>Reabastecimiento y reportes</Text>
+      <Link href="/admin/replenishment" asChild>
+        <Pressable style={styles.actionButtonSecondary}>
+          <Text style={styles.actionButtonSecondaryText}>Reabastecimiento</Text>
+        </Pressable>
+      </Link>
       <Link href="/admin/weekly-report" asChild>
         <Pressable style={styles.actionButtonSecondary}>
           <Text style={styles.actionButtonSecondaryText}>Reporte semanal</Text>
         </Pressable>
       </Link>
 
+      <Text style={styles.sectionTitle}>Operación en campo</Text>
       <Link href="/admin/drivers-map" asChild>
         <Pressable style={styles.actionButtonSecondary}>
           <Text style={styles.actionButtonSecondaryText}>Choferes activos</Text>
         </Pressable>
       </Link>
-
       <Link href="/admin/messages" asChild>
         <Pressable style={styles.actionButtonSecondary}>
           <Text style={styles.actionButtonSecondaryText}>Mensajes</Text>
         </Pressable>
       </Link>
-
       <Link href="/admin/dispatch" asChild>
         <Pressable style={styles.actionButtonSecondary}>
           <Text style={styles.actionButtonSecondaryText}>Dispatch</Text>
@@ -109,6 +107,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#444',
     marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 8,
+    marginBottom: 8,
   },
   actionButton: {
     backgroundColor: '#2563eb',

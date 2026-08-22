@@ -8,6 +8,7 @@ import * as workShiftsApi from '../../src/modules/workShifts/api';
 import ProductPicker from '../../src/modules/sales/ProductPicker';
 import PaymentSplitInput from '../../src/modules/sales/PaymentSplitInput';
 import { round2, formatCurrency } from '../../src/shared/money';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 export default function NewSaleScreen() {
   const { token } = useAuth();
@@ -104,15 +105,20 @@ export default function NewSaleScreen() {
 
   if (loadingProducts) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator />
+      <View style={styles.container}>
+        <View style={styles.content}>
+          <ScreenHeader title="Nueva venta" backHref="/driver" />
+        </View>
+        <View style={styles.center}>
+          <ActivityIndicator />
+        </View>
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Nueva venta</Text>
+      <ScreenHeader title="Nueva venta" backHref="/driver" />
 
       {!hasOpenShift && (
         <Text style={styles.warning}>
@@ -191,7 +197,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 16 },
   sectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8 },
   input: {
     borderWidth: 1,

@@ -4,6 +4,7 @@ import { useAuth } from '../../src/modules/auth/useAuth';
 import * as usersApi from '../../src/modules/users/api';
 import * as dispatchApi from '../../src/modules/dispatch/api';
 import { DISPATCH_STATUS_LABELS, DISPATCH_STATUS_COLORS } from '../../src/shared/constants';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 export default function AdminDispatchScreen() {
   const { token } = useAuth();
@@ -54,6 +55,14 @@ export default function AdminDispatchScreen() {
       setError('Selecciona un chofer');
       return;
     }
+    if (!destinationLabel.trim()) {
+      setError('La etiqueta del destino es requerida');
+      return;
+    }
+    if (!address.trim()) {
+      setError('La dirección es requerida');
+      return;
+    }
     setCreating(true);
     try {
       await dispatchApi.createDispatch(token, {
@@ -85,7 +94,15 @@ export default function AdminDispatchScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Dispatch</Text>
+      <ScreenHeader
+        title="Dispatch"
+        backHref="/admin"
+        onRefresh={() => {
+          loadDrivers();
+          loadDispatches();
+        }}
+        refreshing={loading}
+      />
 
       <Text style={styles.sectionTitle}>Nuevo dispatch</Text>
       <Text style={styles.label}>Chofer</Text>
@@ -100,6 +117,7 @@ export default function AdminDispatchScreen() {
           </Pressable>
         ))}
       </View>
+      {drivers.length === 0 && <Text style={styles.empty}>No hay choferes registrados.</Text>}
 
       <Text style={styles.label}>Etiqueta del destino</Text>
       <TextInput style={styles.input} value={destinationLabel} onChangeText={setDestinationLabel} placeholder="Ej. Bodega Norte" />
@@ -147,7 +165,6 @@ export default function AdminDispatchScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 60 },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 12 },
   sectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8 },
   label: { fontSize: 13, color: '#444', marginBottom: 4, marginTop: 8 },
   driverRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -168,8 +185,8 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontWeight: '600', fontSize: 16 },
   empty: { color: '#666' },
   card: { borderWidth: 1, borderColor: '#e5e5e5', borderRadius: 10, padding: 12, marginBottom: 10 },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardLabel: { fontSize: 15, fontWeight: '600' },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  cardLabel: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
   status: { fontSize: 13, fontWeight: '700' },
   cardMeta: { fontSize: 12, color: '#666', marginTop: 4 },
   cancelButton: { marginTop: 8, alignSelf: 'flex-start', backgroundColor: '#dc2626', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },

@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from
 import { useAuth } from '../../src/modules/auth/useAuth';
 import * as locationsApi from '../../src/modules/locations/api';
 import { openInMaps } from '../../src/shared/openInMaps';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 export default function DriversMapScreen() {
   const { token } = useAuth();
@@ -28,12 +29,7 @@ export default function DriversMapScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Choferes activos</Text>
-        <Pressable onPress={load}>
-          <Text style={styles.refresh}>Actualizar</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader title="Choferes activos" backHref="/admin" onRefresh={load} refreshing={loading} />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -76,14 +72,11 @@ export default function DriversMapScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 60 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 22, fontWeight: 'bold' },
-  refresh: { color: '#2563eb', fontSize: 14 },
   error: { color: '#dc2626', marginBottom: 8 },
   empty: { color: '#666', marginTop: 20, textAlign: 'center' },
   card: { borderWidth: 1, borderColor: '#e5e5e5', borderRadius: 10, padding: 12, marginBottom: 10 },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: { fontSize: 16, fontWeight: '600' },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  name: { fontSize: 16, fontWeight: '600', flexShrink: 1 },
   badge: { fontSize: 12, fontWeight: '700', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, overflow: 'hidden' },
   badgeFresh: { color: '#16a34a', backgroundColor: '#dcfce7' },
   badgeStale: { color: '#d97706', backgroundColor: '#fef3c7' },

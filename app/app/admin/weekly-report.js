@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from
 import { useAuth } from '../../src/modules/auth/useAuth';
 import * as vehiclesApi from '../../src/modules/vehicles/api';
 import * as inventoryCountsApi from '../../src/modules/inventoryCounts/api';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 function groupByVehicleAndWeek(counts) {
   const groups = new Map();
@@ -58,12 +59,7 @@ export default function WeeklyReportScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Reporte de discrepancias semanales</Text>
-        <Pressable onPress={loadCounts}>
-          <Text style={styles.refresh}>Actualizar</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader title="Reporte semanal" backHref="/admin" onRefresh={loadCounts} refreshing={loading} />
 
       <View style={styles.vehicleRow}>
         <Pressable
@@ -132,9 +128,6 @@ export default function WeeklyReportScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 60 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 20, fontWeight: 'bold', flexShrink: 1, paddingRight: 8 },
-  refresh: { color: '#2563eb', fontSize: 14 },
   vehicleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   vehicleChip: { borderWidth: 1, borderColor: '#2563eb', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
   vehicleChipActive: { backgroundColor: '#2563eb' },

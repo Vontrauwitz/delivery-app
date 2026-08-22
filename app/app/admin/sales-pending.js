@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/modules/auth/useAuth';
 import * as approvalsApi from '../../src/modules/approvals/api';
 import { formatCurrency } from '../../src/shared/money';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 export default function SalesPendingScreen() {
   const { token } = useAuth();
@@ -31,12 +32,7 @@ export default function SalesPendingScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Ventas pendientes</Text>
-        <Pressable onPress={load}>
-          <Text style={styles.refresh}>Actualizar</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader title="Ventas pendientes" backHref="/admin" onRefresh={load} refreshing={loading} />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -66,9 +62,6 @@ export default function SalesPendingScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', padding: 20 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 22, fontWeight: 'bold' },
-  refresh: { color: '#2563eb', fontSize: 14 },
   error: { color: '#dc2626', marginBottom: 8 },
   empty: { color: '#666', marginTop: 20, textAlign: 'center' },
   list: { paddingBottom: 20 },
@@ -79,8 +72,8 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 10,
   },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  driver: { fontSize: 16, fontWeight: '600' },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
+  driver: { fontSize: 16, fontWeight: '600', flexShrink: 1 },
   total: { fontSize: 16, fontWeight: '700' },
   date: { fontSize: 13, color: '#666' },
   itemsCount: { fontSize: 13, color: '#666', marginTop: 2 },

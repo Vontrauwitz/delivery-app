@@ -189,23 +189,37 @@ export default function SaleDetailScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator />
+      <View style={styles.container}>
+        <View style={styles.content}>
+          <Pressable onPress={() => router.back()} hitSlop={8}>
+            <Text style={styles.back}>← Volver</Text>
+          </Pressable>
+        </View>
+        <View style={styles.center}>
+          <ActivityIndicator />
+        </View>
       </View>
     );
   }
 
   if (!sale) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.error}>{error || 'Venta no encontrada'}</Text>
+      <View style={styles.container}>
+        <View style={styles.content}>
+          <Pressable onPress={() => router.back()} hitSlop={8}>
+            <Text style={styles.back}>← Volver</Text>
+          </Pressable>
+        </View>
+        <View style={styles.center}>
+          <Text style={styles.error}>{error || 'Venta no encontrada'}</Text>
+        </View>
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Pressable onPress={() => router.back()}>
+      <Pressable onPress={() => router.back()} hitSlop={8}>
         <Text style={styles.back}>← Volver</Text>
       </Pressable>
 

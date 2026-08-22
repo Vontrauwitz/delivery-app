@@ -4,6 +4,7 @@ import { useAuth } from '../../src/modules/auth/useAuth';
 import * as dispatchApi from '../../src/modules/dispatch/api';
 import { openInMaps } from '../../src/shared/openInMaps';
 import { DISPATCH_STATUS_LABELS, DISPATCH_STATUS_COLORS } from '../../src/shared/constants';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 export default function DriverDispatchScreen() {
   const { token } = useAuth();
@@ -59,12 +60,12 @@ export default function DriverDispatchScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Dispatch</Text>
-        <Pressable onPress={load}>
-          <Text style={styles.refresh}>Actualizar</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader
+        title={active.length > 0 ? `Dispatch (${active.length} activo${active.length > 1 ? 's' : ''})` : 'Dispatch'}
+        backHref="/driver"
+        onRefresh={load}
+        refreshing={loading}
+      />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -134,15 +135,12 @@ export default function DriverDispatchScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 60 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 22, fontWeight: 'bold' },
-  refresh: { color: '#2563eb', fontSize: 14 },
   sectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8 },
   error: { color: '#dc2626', marginBottom: 8 },
   empty: { color: '#666' },
   card: { borderWidth: 1, borderColor: '#e5e5e5', borderRadius: 10, padding: 12, marginBottom: 10 },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  label: { fontSize: 16, fontWeight: '600' },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  label: { fontSize: 16, fontWeight: '600', flexShrink: 1 },
   status: { fontSize: 13, fontWeight: '700' },
   address: { fontSize: 13, color: '#666', marginTop: 2 },
   note: { fontSize: 12, color: '#666', marginTop: 4, fontStyle: 'italic' },

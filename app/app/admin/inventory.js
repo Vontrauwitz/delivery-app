@@ -6,6 +6,7 @@ import * as inventoryApi from '../../src/modules/inventory/api';
 import * as inventoryCountsApi from '../../src/modules/inventoryCounts/api';
 import QuantityStepper from '../../src/modules/inventory/QuantityStepper';
 import { SESSION_STATUS_LABELS, COUNT_TYPE_LABELS } from '../../src/shared/constants';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 export default function InventoryOverviewScreen() {
   const { session: sessionIdParam } = useLocalSearchParams();
@@ -96,12 +97,18 @@ export default function InventoryOverviewScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Inventario</Text>
-        <Pressable onPress={() => router.push('/admin/inventory-open')}>
-          <Text style={styles.link}>+ Abrir sesión</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader
+        title="Inventario"
+        backHref="/admin"
+        onRefresh={() => {
+          loadSessions();
+          loadSessionDetail();
+        }}
+        refreshing={loading}
+      />
+      <Pressable style={styles.openSessionLink} onPress={() => router.push('/admin/inventory-open')}>
+        <Text style={styles.link}>+ Abrir sesión</Text>
+      </Pressable>
 
       <Text style={styles.sectionTitle}>Sesiones</Text>
       <View style={styles.sessionRow}>
@@ -203,7 +210,11 @@ export default function InventoryOverviewScreen() {
           )}
         </>
       ) : (
-        <Text style={styles.empty}>Selecciona una sesión para ver el detalle.</Text>
+        <Text style={styles.empty}>
+          {sessions.length === 0
+            ? 'Todavía no hay sesiones de inventario. Abre una para empezar.'
+            : 'Selecciona una sesión arriba para ver el detalle.'}
+        </Text>
       )}
     </ScrollView>
   );
@@ -212,8 +223,7 @@ export default function InventoryOverviewScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 60 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 22, fontWeight: 'bold' },
+  openSessionLink: { alignSelf: 'flex-start', marginBottom: 16 },
   link: { color: '#2563eb', fontWeight: '600' },
   sectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8 },
   sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 },

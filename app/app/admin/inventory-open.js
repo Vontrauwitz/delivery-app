@@ -7,6 +7,7 @@ import * as productsApi from '../../src/modules/products/api';
 import * as inventoryApi from '../../src/modules/inventory/api';
 import * as workShiftsApi from '../../src/modules/workShifts/api';
 import QuantityStepper from '../../src/modules/inventory/QuantityStepper';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 export default function InventoryOpenScreen() {
   const { token } = useAuth();
@@ -114,8 +115,13 @@ export default function InventoryOpenScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator />
+      <View style={styles.container}>
+        <View style={styles.content}>
+          <ScreenHeader title="Abrir sesión de inventario" backHref="/admin/inventory" />
+        </View>
+        <View style={styles.center}>
+          <ActivityIndicator />
+        </View>
       </View>
     );
   }
@@ -124,7 +130,7 @@ export default function InventoryOpenScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Abrir sesión de inventario</Text>
+      <ScreenHeader title="Abrir sesión de inventario" backHref="/admin/inventory" />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -186,7 +192,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 60 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 16 },
   sectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8 },
   vehicleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   vehicleChip: {

@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TextInput, Pressable, StyleSheet, ActivityIndic
 import { useAuth } from '../../src/modules/auth/useAuth';
 import * as vehiclesApi from '../../src/modules/vehicles/api';
 import * as replenishmentApi from '../../src/modules/replenishment/api';
+import ScreenHeader from '../../src/shared/ScreenHeader';
 
 export default function ReplenishmentScreen() {
   const { token } = useAuth();
@@ -59,13 +60,21 @@ export default function ReplenishmentScreen() {
   }
 
   async function saveConfig(productId) {
+    const coverageDays = Number(coverageDaysInput);
+    const safetyStock = Number(safetyStockInput);
+    if (!Number.isFinite(coverageDays) || coverageDays < 0) {
+      setError('Días de cobertura debe ser un número válido (>= 0)');
+      return;
+    }
+    if (!Number.isFinite(safetyStock) || safetyStock < 0) {
+      setError('Stock de seguridad debe ser un número válido (>= 0)');
+      return;
+    }
+
     setSaving(true);
     setError('');
     try {
-      await replenishmentApi.setConfig(token, productId, {
-        coverageDays: Number(coverageDaysInput),
-        safetyStock: Number(safetyStockInput),
-      });
+      await replenishmentApi.setConfig(token, productId, { coverageDays, safetyStock });
       setEditingProductId(null);
       await loadSuggestions();
     } catch (err) {
@@ -91,12 +100,7 @@ export default function ReplenishmentScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Reabastecimiento</Text>
-        <Pressable onPress={loadSuggestions}>
-          <Text style={styles.refresh}>Actualizar</Text>
-        </Pressable>
-      </View>
+      <ScreenHeader title="Reabastecimiento" backHref="/admin" onRefresh={loadSuggestions} refreshing={loading} />
 
       <Text style={styles.sectionTitle}>Vehículo</Text>
       <View style={styles.vehicleRow}>
@@ -112,6 +116,7 @@ export default function ReplenishmentScreen() {
           </Pressable>
         ))}
       </View>
+      {vehicles.length === 0 && <Text style={styles.empty}>No hay vehículos registrados.</Text>}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -209,9 +214,6 @@ function Metric({ label, value, muted }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 60 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 22, fontWeight: 'bold' },
-  refresh: { color: '#2563eb', fontSize: 14 },
   sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 8 },
   vehicleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   vehicleChip: { borderWidth: 1, borderColor: '#2563eb', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
@@ -224,8 +226,8 @@ const styles = StyleSheet.create({
   infoLine: { fontSize: 12, color: '#333' },
   warning: { color: '#d97706', fontSize: 12, marginTop: 6, fontWeight: '600' },
   card: { borderWidth: 1, borderColor: '#e5e5e5', borderRadius: 10, padding: 12, marginBottom: 10 },
-  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  productName: { fontSize: 16, fontWeight: '600' },
+  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  productName: { fontSize: 16, fontWeight: '600', flexShrink: 1 },
   link: { color: '#2563eb', fontSize: 13, fontWeight: '600' },
   metricRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
   metricLabel: { fontSize: 13, color: '#666' },

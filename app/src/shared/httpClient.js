@@ -1,9 +1,24 @@
-// Para probar en un dispositivo físico o emulador, cambia esta URL por defecto
-// o define EXPO_PUBLIC_API_URL con la IP de tu máquina en la red local
-// (ej. http://192.168.1.10:4000). "localhost" solo funciona en web/simulador.
-const DEFAULT_API_URL = 'http://localhost:4000';
+import Constants from 'expo-constants';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || DEFAULT_API_URL;
+// En producción, EXPO_PUBLIC_API_URL siempre manda (se define en el build de EAS).
+// En desarrollo, en vez de pedir que cada quien hardcodee su IP de LAN en .env,
+// derivamos el host del backend del propio host de Metro/Expo (mismo Mac, mismo
+// puerto 4000), así el valor sigue automáticamente la IP actual del Mac sin
+// tocar nada cuando el DHCP la cambia. "localhost" es el fallback seguro para
+// web y para cuando Expo no expone un hostUri (p.ej. builds standalone).
+const BACKEND_PORT = 4000;
+const FALLBACK_API_URL = `http://localhost:${BACKEND_PORT}`;
+
+function resolveDevApiUrl() {
+  const hostUri = Constants.expoConfig?.hostUri || Constants.expoGoConfig?.hostUri;
+  const host = hostUri?.split(':')?.[0];
+  if (!host) {
+    return FALLBACK_API_URL;
+  }
+  return `http://${host}:${BACKEND_PORT}`;
+}
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? resolveDevApiUrl() : FALLBACK_API_URL);
 
 async function request(path, { method = 'GET', body, token } = {}) {
   const headers = { 'Content-Type': 'application/json' };
@@ -20,7 +35,12 @@ async function request(path, { method = 'GET', body, token } = {}) {
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error((data && data.error) || 'Error de red');
+    // Carries the HTTP status so callers can tell "the backend rejected this" (401/403 — a real
+    // auth failure) apart from other failures. A request that never reaches the backend at all
+    // (offline, backend down) throws before this point and has no `.status` — see auth API docs.
+    const error = new Error((data && data.error) || 'Error de red');
+    error.status = response.status;
+    throw error;
   }
 
   return data;

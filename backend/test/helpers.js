@@ -50,7 +50,8 @@ async function assertServerReachable() {
 // Clears the collections seed.js doesn't touch itself (Sale/InventorySession/InventoryCount/
 // Closing/WorkShift/AuditLog/ReplenishmentConfig/LocationPing/Message/Dispatch), then re-runs
 // the normal seed script for a clean, deterministic starting point: 1 manager, 1 driver, 1
-// vehicle assigned to the driver, 3 products.
+// vehicle assigned to the driver, 10 products (seed.js clears/recreates Product, Promotion,
+// AccountingPeriod, and ScheduledShift itself).
 async function resetAndSeed() {
   await mongoose.connect(MONGO_URI);
   await mongoose.connection.db.collection('sales').deleteMany({});

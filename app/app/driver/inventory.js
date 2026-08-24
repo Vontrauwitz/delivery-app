@@ -1,23 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, TextInput, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../src/modules/auth/useAuth';
 import * as inventoryApi from '../../src/modules/inventory/api';
 import * as inventoryCountsApi from '../../src/modules/inventoryCounts/api';
 import * as closingApi from '../../src/modules/closing/api';
-import * as workShiftsApi from '../../src/modules/workShifts/api';
 import QuantityStepper from '../../src/modules/inventory/QuantityStepper';
 import { formatCurrency } from '../../src/shared/money';
-import { SESSION_STATUS_LABELS } from '../../src/shared/constants';
 import ScreenHeader from '../../src/shared/ScreenHeader';
+import { colors, spacing, radii, typography, softShadow } from '../../src/shared/theme';
+
+const STATUS_LABELS = { OPEN: 'Al día', CLOSING_PENDING: 'Cierre pendiente', CLOSED: 'Última actualización' };
+const STATUS_COLORS = { OPEN: colors.success, CLOSING_PENDING: colors.warning, CLOSED: colors.neutral };
 
 export default function DriverInventoryScreen() {
   const { token } = useAuth();
+  const params = useLocalSearchParams();
 
   const [session, setSession] = useState(null);
   const [expected, setExpected] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [hasOpenShift, setHasOpenShift] = useState(true);
 
   const [mode, setMode] = useState('idle'); // idle | partial | closing
   const [partialQuantities, setPartialQuantities] = useState({});
@@ -32,20 +35,19 @@ export default function DriverInventoryScreen() {
   const [closingSubmitting, setClosingSubmitting] = useState(false);
   const [closingError, setClosingError] = useState('');
 
+  // The exact same read the manager's per-driver inventory screen uses — so what a driver
+  // sees here and what their manager sees for them can never disagree.
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError('');
     try {
-      const shift = await workShiftsApi.getMyActiveShift(token);
-      setHasOpenShift(!!shift);
-
-      const sessionData = await inventoryApi.getMyActiveSession(token);
-      setSession(sessionData);
-      const expectedData = await inventoryApi.getExpectedInventory(token, sessionData._id);
-      setExpected(expectedData);
+      const current = await inventoryApi.getMyCurrentStock(token);
+      setSession(current.session);
+      setExpected(current.stock);
     } catch (err) {
       setSession(null);
-      setLoadError(err.message || 'No hay una sesión de inventario abierta para tu vehículo');
+      setExpected([]);
+      setLoadError('');
     } finally {
       setLoading(false);
     }
@@ -54,6 +56,15 @@ export default function DriverInventoryScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Deep link from the driver home "Cierre" tile (?mode=closing): jump straight into the
+  // closing form instead of making the driver find it inside this screen themselves.
+  useEffect(() => {
+    if (params.mode === 'closing' && session?.status === 'OPEN' && expected.length > 0 && mode === 'idle') {
+      startClosing();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.mode, session, expected]);
 
   function startPartial() {
     setMode('partial');
@@ -123,7 +134,7 @@ export default function DriverInventoryScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
+        <ActivityIndicator color={colors.primary} />
       </View>
     );
   }
@@ -132,145 +143,150 @@ export default function DriverInventoryScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.content}>
-          <ScreenHeader title="Inventario" backHref="/driver" />
+          <ScreenHeader title="Inventario" backHref="/driver" onRefresh={load} refreshing={loading} />
         </View>
-        <View style={styles.center}>
-          <Text style={styles.error}>{loadError}</Text>
-          <Pressable onPress={load} style={{ marginTop: 12 }}>
-            <Text style={styles.refresh}>Reintentar</Text>
-          </Pressable>
+        <View style={styles.emptyCenter}>
+          <Text style={styles.emptyIcon}>📦</Text>
+          <Text style={styles.emptyTitle}>Sin inventario todavía</Text>
+          <Text style={styles.emptyBody}>
+            Cuando tu manager te reponga productos, tu inventario aparecerá aquí automáticamente. Mientras tanto,
+            puedes seguir vendiendo con normalidad.
+          </Text>
         </View>
       </View>
     );
   }
 
+  const statusLabel = STATUS_LABELS[session.status] || session.status;
+  const statusColor = STATUS_COLORS[session.status] || colors.neutral;
+  const dateLabel =
+    session.status === 'CLOSED'
+      ? `Cierre del ${new Date(session.businessDate).toLocaleDateString()}`
+      : `Desde ${new Date(session.businessDate).toLocaleDateString()}`;
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <ScreenHeader title="Inventario" backHref="/driver" onRefresh={load} refreshing={loading} />
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={60}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScreenHeader title="Inventario" backHref="/driver" onRefresh={load} refreshing={loading} />
 
-      <View style={styles.sessionBox}>
-        <Text style={styles.sessionLine}>
-          Sesión {SESSION_STATUS_LABELS[session.status]} — {new Date(session.businessDate).toLocaleDateString()}
-        </Text>
-        <Text style={styles.sessionLine}>Vehículo: {session.vehicle?.name}</Text>
-      </View>
-
-      <Text style={styles.sectionTitle}>Inventario esperado</Text>
-      {expected.map((e) => (
-        <View key={e.product._id} style={styles.expectedRow}>
-          <Text style={styles.expectedName}>
-            {e.product.icon} {e.product.name}
-          </Text>
-          <Text style={styles.expectedQty}>{e.quantityExpected}</Text>
+        <View style={styles.statusRow}>
+          <View style={[styles.statusPill, { backgroundColor: `${statusColor}22` }]}>
+            <Text style={[styles.statusPillText, { color: statusColor }]}>{statusLabel}</Text>
+          </View>
+          <Text style={styles.statusDate}>{dateLabel}</Text>
         </View>
-      ))}
 
-      {session.status === 'CLOSING_PENDING' && (
-        <Text style={styles.warning}>
-          Ya enviaste el cierre de esta sesión. Está congelada a la espera de revisión del manager.
-        </Text>
-      )}
+        <Text style={styles.sectionTitle}>Tu inventario actual</Text>
+        {expected.length === 0 ? (
+          <Text style={styles.notice}>Todavía no tienes productos en inventario.</Text>
+        ) : (
+          <View style={styles.expectedCard}>
+            {expected.map((e, index) => (
+              <View key={e.product._id} style={[styles.expectedRow, index === expected.length - 1 && { borderBottomWidth: 0 }]}>
+                <Text style={styles.expectedName}>
+                  {e.product.icon} {e.product.name}
+                </Text>
+                <Text style={styles.expectedQty}>{e.quantityExpected}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
-      {session.status === 'OPEN' && !hasOpenShift && (
-        <Text style={styles.warning}>No tienes un turno activo. Inicia turno para poder operar el inventario.</Text>
-      )}
+        {session.status === 'CLOSING_PENDING' && (
+          <Text style={styles.notice}>Ya enviaste tu cierre. Está a la espera de revisión del manager.</Text>
+        )}
+        {session.status === 'CLOSED' && (
+          <Text style={styles.notice}>Volverás a poder contar o cerrar cuando tengas una venta o reposición nueva.</Text>
+        )}
 
-      {session.status === 'OPEN' && (
-        <View style={styles.actionsRow}>
-          <Pressable
-            style={[styles.actionButton, !hasOpenShift && styles.actionButtonDisabled]}
-            onPress={startPartial}
-            disabled={!hasOpenShift}
-          >
-            <Text style={styles.actionButtonText}>Conteo parcial</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.actionButton, styles.closingButton, !hasOpenShift && styles.actionButtonDisabled]}
-            onPress={startClosing}
-            disabled={!hasOpenShift}
-          >
-            <Text style={styles.actionButtonText}>Cerrar jornada</Text>
-          </Pressable>
-        </View>
-      )}
+        {session.status === 'OPEN' && (
+          <View style={styles.actionsRow}>
+            <Pressable style={styles.actionButton} onPress={startPartial}>
+              <Text style={styles.actionButtonText}>Conteo parcial</Text>
+            </Pressable>
+            <Pressable style={[styles.actionButton, styles.closingButton]} onPress={startClosing}>
+              <Text style={styles.actionButtonText}>Cerrar jornada</Text>
+            </Pressable>
+          </View>
+        )}
 
-      {mode === 'partial' && (
-        <View style={styles.formBox}>
-          <Text style={styles.sectionTitle}>Conteo parcial — cantidad física</Text>
-          <QuantityStepper
-            items={expected.map((e) => ({ product: e.product, note: `Esperado: ${e.quantityExpected}` }))}
-            quantities={partialQuantities}
-            onChangeQuantity={(id, qty) => setPartialQuantities((prev) => ({ ...prev, [id]: qty }))}
-          />
-          {partialError ? <Text style={styles.error}>{partialError}</Text> : null}
-          <Pressable style={styles.button} onPress={submitPartial} disabled={partialSubmitting}>
-            {partialSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Registrar conteo</Text>}
-          </Pressable>
+        {mode === 'partial' && (
+          <View style={styles.formBox}>
+            <Text style={styles.sectionTitle}>Conteo parcial — cantidad física</Text>
+            <QuantityStepper
+              items={expected.map((e) => ({ product: e.product, note: `Esperado: ${e.quantityExpected}` }))}
+              quantities={partialQuantities}
+              onChangeQuantity={(id, qty) => setPartialQuantities((prev) => ({ ...prev, [id]: qty }))}
+            />
+            {partialError ? <Text style={styles.error}>{partialError}</Text> : null}
+            <Pressable style={styles.button} onPress={submitPartial} disabled={partialSubmitting}>
+              {partialSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Registrar conteo</Text>}
+            </Pressable>
 
-          {partialResult && (
-            <View style={styles.resultBox}>
-              <Text style={styles.resultTitle}>Diferencias</Text>
-              {partialResult.differences.map((d) => (
-                <View key={d.product._id} style={styles.diffRow}>
-                  <Text style={styles.diffName}>{d.product.name}</Text>
-                  <Text style={styles.diffValue}>
-                    contado {d.quantityCounted} / esperado {d.quantityExpected} ({d.difference >= 0 ? '+' : ''}
-                    {d.difference})
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-      )}
+            {partialResult && (
+              <View style={styles.resultBox}>
+                <Text style={styles.resultTitle}>Diferencias</Text>
+                {partialResult.differences.map((d) => (
+                  <View key={d.product._id} style={styles.diffRow}>
+                    <Text style={styles.diffName}>{d.product.name}</Text>
+                    <Text style={styles.diffValue}>
+                      contado {d.quantityCounted} / esperado {d.quantityExpected} ({d.difference >= 0 ? '+' : ''}
+                      {d.difference})
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
 
-      {mode === 'closing' && (
-        <View style={styles.formBox}>
-          <Text style={styles.sectionTitle}>Cierre de jornada — inventario final</Text>
-          <QuantityStepper
-            items={expected.map((e) => ({ product: e.product, note: `Esperado: ${e.quantityExpected}` }))}
-            quantities={closingQuantities}
-            onChangeQuantity={(id, qty) => setClosingQuantities((prev) => ({ ...prev, [id]: qty }))}
-          />
+        {mode === 'closing' && (
+          <View style={styles.formBox}>
+            <Text style={styles.sectionTitle}>Cierre de jornada — inventario final</Text>
+            <QuantityStepper
+              items={expected.map((e) => ({ product: e.product, note: `Esperado: ${e.quantityExpected}` }))}
+              quantities={closingQuantities}
+              onChangeQuantity={(id, qty) => setClosingQuantities((prev) => ({ ...prev, [id]: qty }))}
+            />
 
-          <Text style={styles.sectionTitle}>Efectivo en mano</Text>
-          <TextInput
-            style={styles.input}
-            keyboardType="numeric"
-            placeholder="0"
-            value={reportedCash}
-            onChangeText={setReportedCash}
-          />
+            <Text style={styles.sectionTitle}>Efectivo en mano</Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="numeric"
+              placeholder="0"
+              placeholderTextColor={colors.textTertiary}
+              value={reportedCash}
+              onChangeText={setReportedCash}
+            />
 
-          {closingError ? <Text style={styles.error}>{closingError}</Text> : null}
-          <Pressable style={styles.button} onPress={submitClosing} disabled={closingSubmitting}>
-            {closingSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Registrar cierre</Text>}
-          </Pressable>
+            {closingError ? <Text style={styles.error}>{closingError}</Text> : null}
+            <Pressable style={styles.button} onPress={submitClosing} disabled={closingSubmitting}>
+              {closingSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Registrar cierre</Text>}
+            </Pressable>
 
-          {closingResult && (
-            <View style={styles.resultBox}>
-              <Text style={styles.resultTitle}>Resumen de cierre</Text>
-              <SummaryRow label="Efectivo esperado" value={formatCurrency(closingResult.expectedCash)} />
-              <SummaryRow label="Efectivo reportado" value={formatCurrency(closingResult.reportedCash)} />
-              <SummaryRow label="Diferencia" value={formatCurrency(closingResult.cashDifference)} bold />
-              <Text style={[styles.resultTitle, { marginTop: 12 }]}>Diferencias de inventario</Text>
-              {closingDifferences.map((d) => (
-                <View key={d.product._id} style={styles.diffRow}>
-                  <Text style={styles.diffName}>{d.product.name}</Text>
-                  <Text style={styles.diffValue}>
-                    contado {d.quantityCounted} / esperado {d.quantityExpected} ({d.difference >= 0 ? '+' : ''}
-                    {d.difference})
-                  </Text>
-                </View>
-              ))}
-              <Text style={styles.note}>
-                Cierre registrado. Queda pendiente de revisión y finalización por el manager.
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
-    </ScrollView>
+            {closingResult && (
+              <View style={styles.resultBox}>
+                <Text style={styles.resultTitle}>Resumen de cierre</Text>
+                <SummaryRow label="Efectivo esperado" value={formatCurrency(closingResult.expectedCash)} />
+                <SummaryRow label="Efectivo reportado" value={formatCurrency(closingResult.reportedCash)} />
+                <SummaryRow label="Diferencia" value={formatCurrency(closingResult.cashDifference)} bold />
+                <Text style={[styles.resultTitle, { marginTop: 12 }]}>Diferencias de inventario</Text>
+                {closingDifferences.map((d) => (
+                  <View key={d.product._id} style={styles.diffRow}>
+                    <Text style={styles.diffName}>{d.product.name}</Text>
+                    <Text style={styles.diffValue}>
+                      contado {d.quantityCounted} / esperado {d.quantityExpected} ({d.difference >= 0 ? '+' : ''}
+                      {d.difference})
+                    </Text>
+                  </View>
+                ))}
+                <Text style={styles.note}>Cierre registrado. Queda pendiente de revisión y finalización por el manager.</Text>
+              </View>
+            )}
+          </View>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -284,49 +300,69 @@ function SummaryRow({ label, value, bold }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 20, paddingBottom: 60 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
-  refresh: { color: '#2563eb', fontSize: 14 },
-  sessionBox: { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 12, marginBottom: 16 },
-  sessionLine: { fontSize: 13, color: '#333', marginBottom: 2 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8 },
+  container: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
+  emptyCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
+  emptyIcon: { fontSize: 40, marginBottom: spacing.md },
+  emptyTitle: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.sm, textAlign: 'center' },
+  emptyBody: { ...typography.body, color: colors.textSecondary, textAlign: 'center', lineHeight: 22 },
+
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.lg },
+  statusPill: { borderRadius: radii.full, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  statusPillText: { fontSize: 13, fontWeight: '700' },
+  statusDate: { ...typography.subhead, color: colors.textSecondary },
+
+  sectionTitle: { ...typography.headline, color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm },
+  expectedCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    ...softShadow,
+  },
   expectedRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 8,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
-  expectedName: { fontSize: 14, color: '#333' },
-  expectedQty: { fontSize: 14, fontWeight: '700' },
-  actionsRow: { flexDirection: 'row', gap: 8, marginTop: 20 },
-  actionButton: { flex: 1, backgroundColor: '#2563eb', borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
-  actionButtonDisabled: { backgroundColor: '#93c5fd' },
-  closingButton: { backgroundColor: '#16a34a' },
+  expectedName: { ...typography.body, color: colors.textPrimary },
+  expectedQty: { ...typography.headline, color: colors.textPrimary },
+
+  notice: { ...typography.callout, color: colors.warning, marginTop: spacing.md },
+
+  actionsRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl },
+  actionButton: { flex: 1, backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: spacing.md, alignItems: 'center' },
+  closingButton: { backgroundColor: colors.success },
   actionButtonText: { color: '#fff', fontWeight: '600' },
-  formBox: { marginTop: 20, padding: 12, backgroundColor: '#f9fafb', borderRadius: 10 },
+
+  formBox: { marginTop: spacing.xl, padding: spacing.md, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 10,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
     fontSize: 16,
+    backgroundColor: colors.surface,
+    color: colors.textPrimary,
   },
-  button: { backgroundColor: '#2563eb', borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
+  button: { backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: spacing.md, alignItems: 'center', marginTop: spacing.sm },
   buttonText: { color: '#fff', fontWeight: '600', fontSize: 16 },
-  error: { color: '#dc2626', marginBottom: 8 },
-  warning: { color: '#dc2626', fontSize: 13, marginTop: 12 },
-  resultBox: { marginTop: 16, padding: 12, backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#e5e5e5' },
-  resultTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
-  diffRow: { marginBottom: 6 },
-  diffName: { fontSize: 13, fontWeight: '600' },
-  diffValue: { fontSize: 12, color: '#666' },
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  summaryLabel: { fontSize: 14, color: '#333' },
-  summaryValue: { fontSize: 14, color: '#333' },
+  error: { color: colors.danger, marginBottom: spacing.sm },
+  resultBox: { marginTop: spacing.lg, padding: spacing.md, backgroundColor: colors.background, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border },
+  resultTitle: { ...typography.subhead, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
+  diffRow: { marginBottom: spacing.xs },
+  diffName: { ...typography.callout, fontWeight: '600', color: colors.textPrimary },
+  diffValue: { ...typography.caption, color: colors.textSecondary },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.xs },
+  summaryLabel: { ...typography.callout, color: colors.textPrimary },
+  summaryValue: { ...typography.callout, color: colors.textPrimary },
   bold: { fontWeight: '700', fontSize: 16 },
-  note: { fontSize: 12, color: '#666', marginTop: 12, fontStyle: 'italic' },
+  note: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.md, fontStyle: 'italic' },
 });

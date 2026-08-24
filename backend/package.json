@@ -12,9 +12,14 @@
     "test:e2e:workshift": "node test/e2e-workshift.js",
     "test:e2e:replenishment": "node test/e2e-replenishment.js",
     "test:e2e:phase4": "node test/e2e-phase4.js",
+    "test:e2e:promotions": "node test/e2e-promotions.js",
+    "test:e2e:accounting-periods": "node test/e2e-accounting-periods.js",
+    "test:e2e:driver-inventory": "node test/e2e-driver-inventory.js",
     "test:unit:replenishment": "node test/unit-replenishment.js",
-    "test:e2e": "npm run test:e2e:phase2 && npm run test:e2e:workshift && npm run test:e2e:replenishment && npm run test:e2e:phase4",
-    "test": "npm run test:unit:replenishment && npm run test:e2e"
+    "test:unit:pricing": "node test/unit-pricing.js",
+    "test:unit:shift-comparison": "node test/unit-shift-comparison.js",
+    "test:e2e": "npm run test:e2e:phase2 && npm run test:e2e:workshift && npm run test:e2e:replenishment && npm run test:e2e:phase4 && npm run test:e2e:promotions && npm run test:e2e:accounting-periods && npm run test:e2e:driver-inventory",
+    "test": "npm run test:unit:replenishment && npm run test:unit:pricing && npm run test:unit:shift-comparison && npm run test:e2e"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

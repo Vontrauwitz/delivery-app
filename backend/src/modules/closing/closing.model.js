@@ -3,7 +3,8 @@ const { CLOSING_STATUSES } = require('../../shared/constants');
 
 const closingSchema = new mongoose.Schema(
   {
-    vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'Vehicle', required: true },
+    // Informational snapshot only (inventory belongs to the driver, never the vehicle).
+    vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'Vehicle' },
     driver: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     // Not unique: a REOPENED closing stays as a frozen historical record, and the driver's
     // resubmission creates a new Closing document referencing the same session.

@@ -1,6 +1,5 @@
 const HttpError = require('../../shared/httpError');
 const { ROLES } = require('../../shared/constants');
-const vehiclesService = require('../vehicles/vehicles.service');
 const service = require('./inventory.service');
 
 function assertCanView(req, session) {
@@ -12,7 +11,7 @@ function assertCanView(req, session) {
 async function open(req, res, next) {
   try {
     const session = await service.openSession({
-      vehicleId: req.body.vehicle,
+      driverId: req.body.driver,
       businessDate: req.body.businessDate,
       initialStock: req.body.initialStock,
       createdBy: req.user.id,
@@ -26,7 +25,7 @@ async function open(req, res, next) {
 async function list(req, res, next) {
   try {
     const filter = {};
-    if (req.query.vehicle) filter.vehicle = req.query.vehicle;
+    if (req.query.driver) filter.driver = req.query.driver;
     if (req.query.status) filter.status = req.query.status;
     const sessions = await service.listSessions(filter);
     res.json(sessions);
@@ -37,17 +36,44 @@ async function list(req, res, next) {
 
 async function getMyActiveSession(req, res, next) {
   try {
-    const vehicle = await vehiclesService.getActiveVehicleForDriver(req.user.id);
-    if (!vehicle) {
-      return next(new HttpError(404, 'No tienes un vehículo activo asignado'));
-    }
-
-    const session = await service.getActiveSessionForVehicle(vehicle._id);
+    const session = await service.getActiveSessionForDriverAny(req.user.id);
     if (!session) {
-      return next(new HttpError(404, 'No hay una sesión de inventario activa para tu vehículo'));
+      return next(new HttpError(404, 'No tienes una sesión de inventario activa'));
     }
 
     res.json(await service.getSessionById(session._id));
+  } catch (err) {
+    next(err);
+  }
+}
+
+// The single read both the driver's own inventory screen and the manager's per-driver
+// inventory screen use — same underlying service call, so the two can never disagree.
+async function getMyCurrentStock(req, res, next) {
+  try {
+    res.json(await service.getCurrentStockForDriverWithProducts(req.user.id));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getCurrentStockForDriver(req, res, next) {
+  try {
+    if (!req.query.driver) {
+      return next(new HttpError(400, 'El parámetro driver es requerido'));
+    }
+    res.json(await service.getCurrentStockForDriverWithProducts(req.query.driver));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function replenish(req, res, next) {
+  try {
+    if (!req.body.driver) {
+      return next(new HttpError(400, 'El chofer es requerido'));
+    }
+    res.status(201).json(await service.replenishStock(req.body.driver, req.body.items, req.user.id));
   } catch (err) {
     next(err);
   }
@@ -83,4 +109,14 @@ async function updateInitialStock(req, res, next) {
   }
 }
 
-module.exports = { open, list, getMyActiveSession, getById, getExpected, updateInitialStock };
+module.exports = {
+  open,
+  list,
+  getMyActiveSession,
+  getMyCurrentStock,
+  getCurrentStockForDriver,
+  replenish,
+  getById,
+  getExpected,
+  updateInitialStock,
+};

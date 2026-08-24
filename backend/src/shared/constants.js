@@ -6,6 +6,13 @@ const ROLES = {
 
 const PAYMENT_METHODS = ['cash', 'transfer'];
 
+// Phase 1 supports a single promotion type: buy `quantity` units of the same product for a
+// flat `bundlePrice`. More types (e.g. percentage-off, time-limited) can be added later without
+// touching the Sale schema, since pricing always resolves through calculateLineSubtotal.
+const PROMOTION_TYPES = {
+  QUANTITY_FOR_PRICE: 'QUANTITY_FOR_PRICE',
+};
+
 const SALE_STATUSES = {
   PENDING: 'PENDING',
   APPROVED: 'APPROVED',
@@ -55,6 +62,16 @@ const WORK_SHIFT_STATUSES = {
   CLOSED: 'CLOSED',
 };
 
+// How far a ScheduledShift's scheduledStart may be from a WorkShift's actual startedAt for the
+// two to be considered a match. Wide on purpose — real shifts can legitimately start early/late
+// and span multiple days (staff shortages, extended coverage), so this is generous, not strict.
+const SCHEDULE_MATCH_TOLERANCE_MS = 36 * 60 * 60 * 1000;
+
+const ACCOUNTING_PERIOD_STATUSES = {
+  OPEN: 'OPEN',
+  CLOSED: 'CLOSED',
+};
+
 // Used when a product has no per-product override in ReplenishmentConfig.
 const REPLENISHMENT_DEFAULTS = {
   COVERAGE_DAYS: 3,
@@ -88,6 +105,7 @@ const DISPATCH_STATUSES = {
 module.exports = {
   ROLES,
   PAYMENT_METHODS,
+  PROMOTION_TYPES,
   SALE_STATUSES,
   INVENTORY_AFFECTING_SALE_STATUSES,
   SESSION_STATUSES,
@@ -100,4 +118,6 @@ module.exports = {
   REPLENISHMENT_MIN_HISTORY_SESSIONS,
   LOCATION_STALE_THRESHOLD_MS,
   DISPATCH_STATUSES,
+  SCHEDULE_MATCH_TOLERANCE_MS,
+  ACCOUNTING_PERIOD_STATUSES,
 };

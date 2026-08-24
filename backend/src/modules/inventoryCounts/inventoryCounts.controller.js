@@ -47,11 +47,11 @@ async function getById(req, res, next) {
 
 async function createWeekly(req, res, next) {
   try {
-    if (!req.body.vehicle) {
-      return next(new HttpError(400, 'El vehículo es requerido'));
+    if (!req.body.driver) {
+      return next(new HttpError(400, 'El chofer es requerido'));
     }
     const count = await service.createWeeklyCount({
-      vehicleId: req.body.vehicle,
+      driverId: req.body.driver,
       rawCounts: req.body.counts,
       weekOf: req.body.weekOf,
       createdBy: req.user.id,
@@ -65,7 +65,7 @@ async function createWeekly(req, res, next) {
 async function listWeekly(req, res, next) {
   try {
     const filter = {};
-    if (req.query.vehicle) filter.vehicle = req.query.vehicle;
+    if (req.query.driver) filter.driver = req.query.driver;
     const counts = await service.listWeeklyCounts(filter);
     res.json(counts);
   } catch (err) {

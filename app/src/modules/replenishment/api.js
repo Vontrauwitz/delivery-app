@@ -1,7 +1,7 @@
 import request from '../../shared/httpClient';
 
-export function getSuggestions(token, vehicleId) {
-  return request(`/replenishment?vehicle=${vehicleId}`, { token });
+export function getSuggestions(token, driverId) {
+  return request(`/replenishment?driver=${driverId}`, { token });
 }
 
 export function listConfig(token) {

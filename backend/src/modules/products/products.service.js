@@ -1,7 +1,7 @@
 const Product = require('./product.model');
 
 async function listProducts(filter = {}) {
-  return Product.find(filter).sort({ createdAt: -1 });
+  return Product.find(filter).sort({ order: 1, createdAt: -1 });
 }
 
 async function getProductById(id) {

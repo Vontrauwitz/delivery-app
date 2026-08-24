@@ -4,13 +4,13 @@ import { Redirect } from 'expo-router';
 import { useAuth } from '../../src/modules/auth/useAuth';
 
 export default function LoginScreen() {
-  const { user, isLoading, signIn } = useAuth();
+  const { status, signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  if (!isLoading && user) {
+  if (status === 'AUTHENTICATED') {
     return <Redirect href="/" />;
   }
 

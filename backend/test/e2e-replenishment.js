@@ -17,13 +17,13 @@ async function main() {
   const managerToken = managerLogin.data.token;
   const driverLogin = await req('/auth/login', { method: 'POST', body: { email: 'driver@delivery.test', password: '123456' } });
   const driverToken = driverLogin.data.token;
+  const driverId = driverLogin.data.user.id;
   assert(managerLogin.status === 200 && driverLogin.status === 200, 'manager and driver login succeed');
 
   const products = (await req('/products', { token: driverToken })).data;
-  const agua = findProductByName(products, 'Agua 600ml');
-  const refresco = findProductByName(products, 'Refresco');
-  const papas = findProductByName(products, 'Papas fritas');
-  const vehicle = (await req('/vehicles', { token: managerToken })).data[0];
+  const agua = findProductByName(products, 'Perro');
+  const refresco = findProductByName(products, 'Ratón');
+  const papas = findProductByName(products, 'Grillo');
 
   await req('/work-shifts/start', { method: 'POST', token: driverToken, expectStatus: 201 });
 
@@ -32,7 +32,7 @@ async function main() {
   // 'approve' | 'cancel' | 'incident' | 'leave-pending'.
   async function runSessionCycle({ initialStock, sales }) {
     const session = (
-      await req('/inventory-sessions', { method: 'POST', token: managerToken, body: { vehicle: vehicle._id, initialStock }, expectStatus: 201 })
+      await req('/inventory-sessions', { method: 'POST', token: managerToken, body: { driver: driverId, initialStock }, expectStatus: 201 })
     ).data;
 
     for (const s of sales) {
@@ -89,7 +89,7 @@ async function main() {
   });
 
   // --- After 1 CLOSED session: insufficient history (min is 3), but consumption is correct ---
-  let suggestions = await req(`/replenishment?vehicle=${vehicle._id}`, { token: managerToken, expectStatus: 200 });
+  let suggestions = await req(`/replenishment?driver=${driverId}`, { token: managerToken, expectStatus: 200 });
   assert(suggestions.data.sessionsUsed === 1, `sessionsUsed reflects 1 CLOSED session (got ${suggestions.data.sessionsUsed})`);
   assert(suggestions.data.insufficientHistory === true, 'insufficientHistory is true with only 1 session of data (min is 3)');
 
@@ -110,7 +110,7 @@ async function main() {
   assert(session3.data.status === 'CLOSED', 'third session cycle finalized to CLOSED');
 
   // --- After 3 CLOSED sessions: history is sufficient, and the numbers add up ---
-  suggestions = await req(`/replenishment?vehicle=${vehicle._id}`, { token: managerToken, expectStatus: 200 });
+  suggestions = await req(`/replenishment?driver=${driverId}`, { token: managerToken, expectStatus: 200 });
   assert(suggestions.data.sessionsUsed === 3, `sessionsUsed now reflects 3 CLOSED sessions (got ${suggestions.data.sessionsUsed})`);
   assert(suggestions.data.insufficientHistory === false, 'insufficientHistory is false once the minimum history threshold is met');
   assert(suggestions.data.stockSource === 'LAST_CLOSED_SESSION', `currentStock is drawn from the latest reliable state (got source=${suggestions.data.stockSource})`);
@@ -138,7 +138,7 @@ async function main() {
   });
   assert(overrideSet.data.coverageDays === 1 && overrideSet.data.safetyStock === 5, 'config override saved');
 
-  suggestions = await req(`/replenishment?vehicle=${vehicle._id}`, { token: managerToken });
+  suggestions = await req(`/replenishment?driver=${driverId}`, { token: managerToken });
   aguaRow = suggestions.data.rows.find((r) => r.product._id === agua._id);
   assert(aguaRow.configIsOverride === true, 'row reflects that this product has a config override');
   assert(aguaRow.targetStock === 15, `target with override = 10*1 + 5 (got ${aguaRow.targetStock}, want 15)`);
@@ -149,13 +149,13 @@ async function main() {
   assert(aguaConfig.isOverride === true, 'config list reflects the override');
 
   await req(`/replenishment/config/${agua._id}`, { method: 'DELETE', token: managerToken, expectStatus: 204 });
-  suggestions = await req(`/replenishment?vehicle=${vehicle._id}`, { token: managerToken });
+  suggestions = await req(`/replenishment?driver=${driverId}`, { token: managerToken });
   aguaRow = suggestions.data.rows.find((r) => r.product._id === agua._id);
   assert(aguaRow.configIsOverride === false, 'config override removed, row reflects defaults again');
   assert(aguaRow.targetStock === 30, 'target back to the default-derived value after reset');
 
   // --- Permissions: driver has no replenishment access at all ---
-  await req(`/replenishment?vehicle=${vehicle._id}`, { token: driverToken, expectStatus: 403 });
+  await req(`/replenishment?driver=${driverId}`, { token: driverToken, expectStatus: 403 });
   await req('/replenishment/config', { token: driverToken, expectStatus: 403 });
   await req(`/replenishment/config/${agua._id}`, { method: 'PUT', token: driverToken, body: { coverageDays: 1, safetyStock: 1 }, expectStatus: 403 });
 
@@ -168,7 +168,7 @@ async function main() {
   await req('/inventory-counts/weekly', {
     method: 'POST',
     token: driverToken,
-    body: { vehicle: vehicle._id, counts: [{ product: agua._id, quantityCounted: 12 }] },
+    body: { driver: driverId, counts: [{ product: agua._id, quantityCounted: 12 }] },
     expectStatus: 403,
   });
   await req('/inventory-counts/weekly', { token: driverToken, expectStatus: 403 });
@@ -178,7 +178,7 @@ async function main() {
     method: 'POST',
     token: managerToken,
     body: {
-      vehicle: vehicle._id,
+      driver: driverId,
       weekOf,
       counts: [
         { product: agua._id, quantityCounted: 12 },
@@ -209,10 +209,10 @@ async function main() {
   assert(aguaExpectedAfter === 14, 'expected inventory is unchanged after the weekly count — never overwritten');
 
   // --- Weekly discrepancy report ---
-  const report = await req(`/inventory-counts/weekly?vehicle=${vehicle._id}`, { token: managerToken, expectStatus: 200 });
-  assert(report.data.length === 1, 'weekly report lists the weekly count, filtered by vehicle');
+  const report = await req(`/inventory-counts/weekly?driver=${driverId}`, { token: managerToken, expectStatus: 200 });
+  assert(report.data.length === 1, 'weekly report lists the weekly count, filtered by driver');
   assert(typeof report.data[0].week === 'string' && /^\d{4}-W\d{2}$/.test(report.data[0].week), 'each entry carries a derived week label for grouping');
-  assert(report.data[0].vehicle._id === vehicle._id, 'report entry identifies the vehicle');
+  assert(report.data[0].driver._id === driverId, 'report entry identifies the driver');
 
   finish();
 }

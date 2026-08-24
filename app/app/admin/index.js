@@ -1,156 +1,154 @@
+import { useEffect, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuth } from '../../src/modules/auth/useAuth';
+import * as approvalsApi from '../../src/modules/approvals/api';
+import { colors, spacing, radii, typography, softShadow } from '../../src/shared/theme';
+
+// Primary business actions only — the four things a manager actually does every day. Anything
+// technical (sessions, accounting periods, weekly counts as a separate concept...) lives one
+// level down, inside the screen it belongs to, never as its own top-level button here.
+const PRIMARY = [
+  { href: '/admin/sales-pending', label: 'Ventas pendientes', icon: '🧾' },
+  { href: '/admin/drivers-map', label: 'Choferes trabajando', icon: '📍' },
+  { href: '/admin/inventory', label: 'Inventario', icon: '📦' },
+  { href: '/admin/closings', label: 'Cierre', icon: '✅' },
+];
+
+const SECONDARY = [
+  { href: '/admin/schedule', label: 'Programación' },
+  { href: '/admin/promotions', label: 'Promociones' },
+  { href: '/admin/weekly-report', label: 'Reportes' },
+  { href: '/admin/settings', label: 'Configuración' },
+];
 
 export default function AdminHome() {
-  const { user, signOut } = useAuth();
+  const { user, token, signOut } = useAuth();
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    approvalsApi
+      .listPendingSales(token)
+      .then((sales) => setPendingCount(sales.length))
+      .catch(() => {});
+  }, [token]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Hola, {user?.name}</Text>
+      <Text style={styles.greeting}>Hola, {user?.name}</Text>
       <Text style={styles.subtitle}>Panel administrativo</Text>
-      <Text style={styles.info}>
-        Revisa y autoriza las ventas de los choferes, administra inventario, cierres y turnos.
-      </Text>
 
-      <Link href="/admin/sales-pending" asChild>
-        <Pressable style={styles.actionButton}>
-          <Text style={styles.actionButtonText}>Ventas pendientes</Text>
-        </Pressable>
-      </Link>
+      <View style={styles.primaryGrid}>
+        {PRIMARY.map((item) => (
+          <Link key={item.href} href={item.href} asChild>
+            <Pressable style={styles.primaryCard}>
+              {item.href === '/admin/sales-pending' && pendingCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{pendingCount}</Text>
+                </View>
+              )}
+              <Text style={styles.primaryIcon}>{item.icon}</Text>
+              <Text style={styles.primaryLabel}>{item.label}</Text>
+            </Pressable>
+          </Link>
+        ))}
+      </View>
 
-      <Text style={styles.sectionTitle}>Inventario</Text>
-      <Link href="/admin/inventory" asChild>
-        <Pressable style={styles.actionButtonSecondary}>
-          <Text style={styles.actionButtonSecondaryText}>Inventario</Text>
-        </Pressable>
-      </Link>
-      <Link href="/admin/inventory-open" asChild>
-        <Pressable style={styles.actionButtonSecondary}>
-          <Text style={styles.actionButtonSecondaryText}>Abrir sesión</Text>
-        </Pressable>
-      </Link>
-      <Link href="/admin/weekly-count" asChild>
-        <Pressable style={styles.actionButtonSecondary}>
-          <Text style={styles.actionButtonSecondaryText}>Conteo semanal</Text>
-        </Pressable>
-      </Link>
+      <View style={styles.secondaryList}>
+        {SECONDARY.map((item, index) => (
+          <Link key={item.href} href={item.href} asChild>
+            <Pressable
+              style={StyleSheet.flatten([
+                styles.secondaryRow,
+                index === SECONDARY.length - 1 && { borderBottomWidth: 0 },
+              ])}
+            >
+              <Text style={styles.secondaryLabel}>{item.label}</Text>
+              <Text style={styles.secondaryChevron}>›</Text>
+            </Pressable>
+          </Link>
+        ))}
+      </View>
 
-      <Text style={styles.sectionTitle}>Turnos y cierres</Text>
-      <Link href="/admin/shifts" asChild>
-        <Pressable style={styles.actionButtonSecondary}>
-          <Text style={styles.actionButtonSecondaryText}>Turnos</Text>
-        </Pressable>
-      </Link>
-      <Link href="/admin/closings" asChild>
-        <Pressable style={styles.actionButtonSecondary}>
-          <Text style={styles.actionButtonSecondaryText}>Cierres</Text>
-        </Pressable>
-      </Link>
+      <View style={styles.tertiaryRow}>
+        <Link href="/admin/messages" asChild>
+          <Pressable>
+            <Text style={styles.tertiaryLink}>Mensajes</Text>
+          </Pressable>
+        </Link>
+        <Link href="/admin/dispatch" asChild>
+          <Pressable>
+            <Text style={styles.tertiaryLink}>Dispatch</Text>
+          </Pressable>
+        </Link>
+      </View>
 
-      <Text style={styles.sectionTitle}>Reabastecimiento y reportes</Text>
-      <Link href="/admin/replenishment" asChild>
-        <Pressable style={styles.actionButtonSecondary}>
-          <Text style={styles.actionButtonSecondaryText}>Reabastecimiento</Text>
-        </Pressable>
-      </Link>
-      <Link href="/admin/weekly-report" asChild>
-        <Pressable style={styles.actionButtonSecondary}>
-          <Text style={styles.actionButtonSecondaryText}>Reporte semanal</Text>
-        </Pressable>
-      </Link>
-
-      <Text style={styles.sectionTitle}>Operación en campo</Text>
-      <Link href="/admin/drivers-map" asChild>
-        <Pressable style={styles.actionButtonSecondary}>
-          <Text style={styles.actionButtonSecondaryText}>Choferes activos</Text>
-        </Pressable>
-      </Link>
-      <Link href="/admin/messages" asChild>
-        <Pressable style={styles.actionButtonSecondary}>
-          <Text style={styles.actionButtonSecondaryText}>Mensajes</Text>
-        </Pressable>
-      </Link>
-      <Link href="/admin/dispatch" asChild>
-        <Pressable style={styles.actionButtonSecondary}>
-          <Text style={styles.actionButtonSecondaryText}>Dispatch</Text>
-        </Pressable>
-      </Link>
-
-      <Pressable style={styles.button} onPress={signOut}>
-        <Text style={styles.buttonText}>Cerrar sesión</Text>
+      <Pressable style={styles.signOutButton} onPress={signOut}>
+        <Text style={styles.signOutText}>Cerrar sesión</Text>
       </Pressable>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  content: {
-    padding: 24,
-    paddingBottom: 40,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 4,
-    marginBottom: 16,
-  },
-  info: {
-    fontSize: 14,
-    color: '#444',
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#888',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  actionButton: {
-    backgroundColor: '#2563eb',
-    borderRadius: 8,
-    paddingVertical: 14,
+  container: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
+
+  greeting: { ...typography.title, color: colors.textPrimary },
+  subtitle: { ...typography.body, color: colors.textSecondary, marginTop: spacing.xs, marginBottom: spacing.xl },
+
+  primaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  primaryCard: {
+    flexBasis: '47%',
+    flexGrow: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.md,
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  actionButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  actionButtonSecondary: {
+    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#2563eb',
-    borderRadius: 8,
-    paddingVertical: 14,
+    borderColor: colors.border,
+    ...softShadow,
+  },
+  primaryIcon: { fontSize: 28, marginBottom: spacing.sm },
+  primaryLabel: { ...typography.headline, color: colors.textPrimary, textAlign: 'center' },
+  badge: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    backgroundColor: colors.danger,
+    borderRadius: radii.full,
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 5,
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'center',
   },
-  actionButtonSecondaryText: {
-    color: '#2563eb',
-    fontWeight: '600',
-    fontSize: 16,
+  badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+
+  secondaryList: {
+    marginTop: spacing.xl,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  button: {
-    backgroundColor: '#dc2626',
-    borderRadius: 8,
-    paddingVertical: 14,
+  secondaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
-  },
+  secondaryLabel: { ...typography.body, color: colors.textPrimary },
+  secondaryChevron: { color: colors.textTertiary, fontSize: 18 },
+
+  tertiaryRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xl, marginTop: spacing.xl },
+  tertiaryLink: { color: colors.textSecondary, fontSize: 13 },
+
+  signOutButton: { alignItems: 'center', marginTop: spacing.xxl },
+  signOutText: { color: colors.danger, fontSize: 13, fontWeight: '600' },
 });

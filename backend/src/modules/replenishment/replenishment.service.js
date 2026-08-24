@@ -1,15 +1,16 @@
 const Product = require('../products/product.model');
 const Sale = require('../sales/sale.model');
+const User = require('../users/user.model');
 const InventorySession = require('../inventory/inventorySession.model');
 const ReplenishmentConfig = require('./replenishmentConfig.model');
 const HttpError = require('../../shared/httpError');
 const round2 = require('../../shared/round2');
 const inventoryService = require('../inventory/inventory.service');
-const vehiclesService = require('../vehicles/vehicles.service');
 const auditService = require('../audit/audit.service');
 const {
   INVENTORY_AFFECTING_SALE_STATUSES,
   SESSION_STATUSES,
+  ROLES,
   REPLENISHMENT_DEFAULTS,
   REPLENISHMENT_CONSUMPTION_WINDOW_SESSIONS,
   REPLENISHMENT_MIN_HISTORY_SESSIONS,
@@ -38,12 +39,12 @@ function resolveConfig(productId, configMap) {
   };
 }
 
-// Consumption is summed from the vehicle's most recent CLOSED sessions only ("prefer completed
+// Consumption is summed from the driver's most recent CLOSED sessions only ("prefer completed
 // historical sessions"): an in-progress OPEN session is a partial day and would understate a
 // daily average. Only inventory-affecting sale statuses count (PENDING/APPROVED/INCIDENT) —
 // CANCELLED sales never represent real consumption, same rule as expected-inventory elsewhere.
-async function computeConsumptionByProduct(vehicleId) {
-  const sessions = await InventorySession.find({ vehicle: vehicleId, status: SESSION_STATUSES.CLOSED })
+async function computeConsumptionByProduct(driverId) {
+  const sessions = await InventorySession.find({ driver: driverId, status: SESSION_STATUSES.CLOSED })
     .sort({ businessDate: -1, createdAt: -1 })
     .limit(REPLENISHMENT_CONSUMPTION_WINDOW_SESSIONS)
     .select('_id');
@@ -71,8 +72,11 @@ async function computeConsumptionByProduct(vehicleId) {
 
 // Orchestrates: active products, recent consumption, current stock, per-product config, and
 // applies the formula. Nothing is persisted — recomputed on demand every call, per PLAN.md.
-async function getReplenishmentSuggestions(vehicleId) {
-  await vehiclesService.getVehicleById(vehicleId); // 404s if the vehicle doesn't exist
+async function getReplenishmentSuggestions(driverId) {
+  const driver = await User.findById(driverId);
+  if (!driver || driver.role !== ROLES.DRIVER) {
+    throw new HttpError(404, 'Chofer no encontrado');
+  }
 
   const products = await Product.find({ active: true }).sort({ name: 1 });
   if (products.length === 0) {
@@ -82,8 +86,8 @@ async function getReplenishmentSuggestions(vehicleId) {
   const [configMap, { consumptionMap, sessionsUsed }, { source: stockSource, stock: currentStockRows }] =
     await Promise.all([
       getConfigMap(products.map((p) => p._id)),
-      computeConsumptionByProduct(vehicleId),
-      inventoryService.getCurrentStockForVehicle(vehicleId),
+      computeConsumptionByProduct(driverId),
+      inventoryService.getCurrentStockForDriver(driverId),
     ]);
 
   const currentStockMap = new Map(currentStockRows.map((r) => [String(r.product), r.quantityExpected]));

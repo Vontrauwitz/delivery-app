@@ -1,10 +1,10 @@
 const HttpError = require('../../shared/httpError');
 
 function validateOpenSession(req, res, next) {
-  const { vehicle, initialStock } = req.body;
+  const { driver, initialStock } = req.body;
 
-  if (!vehicle) {
-    return next(new HttpError(400, 'El vehículo es requerido'));
+  if (!driver) {
+    return next(new HttpError(400, 'El chofer es requerido'));
   }
 
   if (!Array.isArray(initialStock) || initialStock.length === 0) {
@@ -14,4 +14,18 @@ function validateOpenSession(req, res, next) {
   next();
 }
 
-module.exports = { validateOpenSession };
+function validateReplenish(req, res, next) {
+  const { driver, items } = req.body;
+
+  if (!driver) {
+    return next(new HttpError(400, 'El chofer es requerido'));
+  }
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return next(new HttpError(400, 'Debes indicar la cantidad a reponer de al menos un producto'));
+  }
+
+  next();
+}
+
+module.exports = { validateOpenSession, validateReplenish };

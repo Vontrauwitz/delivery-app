@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TextInput, Pressable, StyleSheet, ActivityIndic
 import { useAuth } from '../../src/modules/auth/useAuth';
 import * as workShiftsApi from '../../src/modules/workShifts/api';
 import { formatDurationMs } from '../../src/shared/duration';
+import { getOpenSinceLabel } from '../../src/shared/shiftComparison';
 import { SHIFT_STATUS_LABELS } from '../../src/shared/constants';
 import ScreenHeader from '../../src/shared/ScreenHeader';
 
@@ -130,7 +131,9 @@ export default function ShiftsScreen() {
             <Text style={styles.line}>
               Fin: {shift.endedAt ? new Date(shift.endedAt).toLocaleString() : '—'}
             </Text>
-            <Text style={styles.line}>Duración: {formatDurationMs(shift.durationMs)}</Text>
+            <Text style={styles.line}>
+              {shift.status === 'OPEN' ? getOpenSinceLabel(shift.durationMs) : `Duración: ${formatDurationMs(shift.durationMs)}`}
+            </Text>
 
             {shift._id === selectedId && (
               <View style={styles.detailBox}>

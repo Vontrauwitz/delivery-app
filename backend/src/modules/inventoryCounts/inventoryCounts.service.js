@@ -1,9 +1,9 @@
 const InventoryCount = require('./inventoryCount.model');
+const User = require('../users/user.model');
 const HttpError = require('../../shared/httpError');
 const round2 = require('../../shared/round2');
-const { INVENTORY_COUNT_TYPES, SESSION_STATUSES } = require('../../shared/constants');
+const { INVENTORY_COUNT_TYPES, SESSION_STATUSES, ROLES } = require('../../shared/constants');
 const inventoryService = require('../inventory/inventory.service');
-const vehiclesService = require('../vehicles/vehicles.service');
 const auditService = require('../audit/audit.service');
 
 function normalizeCounts(rawCounts) {
@@ -160,16 +160,19 @@ function withDifferences(doc) {
 }
 
 // Manager/Admin-only for this phase (see createWeeklyCount below for why).
-async function createWeeklyCount({ vehicleId, rawCounts, weekOf, createdBy }) {
-  const vehicle = await vehiclesService.getVehicleById(vehicleId);
+async function createWeeklyCount({ driverId, rawCounts, weekOf, createdBy }) {
+  const driver = await User.findById(driverId);
+  if (!driver || driver.role !== ROLES.DRIVER) {
+    throw new HttpError(400, 'Chofer no válido');
+  }
   const counts = normalizeCounts(rawCounts);
 
-  const { stock: expected, session } = await inventoryService.getCurrentStockForVehicle(vehicleId);
+  const { stock: expected, session } = await inventoryService.getCurrentStockForDriver(driverId);
   const expectedAtCountTime = expected.map((e) => ({ product: e.product, quantityExpected: e.quantityExpected }));
 
   const doc = await InventoryCount.create({
-    vehicle: vehicle._id,
-    driver: vehicle.assignedDriver ? vehicle.assignedDriver._id || vehicle.assignedDriver : undefined,
+    driver: driver._id,
+    vehicle: session ? session.vehicle : undefined,
     inventorySession: session ? session._id : undefined,
     businessDate: weekOf ? new Date(weekOf) : new Date(),
     type: INVENTORY_COUNT_TYPES.WEEKLY,
@@ -200,12 +203,12 @@ function isoWeekLabel(date) {
   return `${d.getUTCFullYear()}-W${String(weekNumber).padStart(2, '0')}`;
 }
 
-// Weekly discrepancy report: every WEEKLY count (optionally filtered by vehicle), each with
+// Weekly discrepancy report: every WEEKLY count (optionally filtered by driver), each with
 // its computed differences/percentages and a derived week label for the manager to group by
-// vehicle and week in the UI.
+// driver and week in the UI.
 async function listWeeklyCounts(filter = {}) {
   const query = { type: INVENTORY_COUNT_TYPES.WEEKLY };
-  if (filter.vehicle) query.vehicle = filter.vehicle;
+  if (filter.driver) query.driver = filter.driver;
 
   const docs = await InventoryCount.find(query)
     .sort({ businessDate: -1, createdAt: -1 })

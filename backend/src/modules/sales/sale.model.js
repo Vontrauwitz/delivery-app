@@ -22,8 +22,15 @@ const paymentSchema = new mongoose.Schema(
 const saleSchema = new mongoose.Schema(
   {
     driver: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'Vehicle', required: true },
-    inventorySession: { type: mongoose.Schema.Types.ObjectId, ref: 'InventorySession', required: true },
+    // Informational snapshot of the driver's vehicle at the moment of the sale — never an
+    // inventory owner, never required. Resolved fresh from the driver's current assignment at
+    // sale-creation time, so it stays accurate even across a mid-shift vehicle switch.
+    vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'Vehicle' },
+    // Optional: inventory belongs to the driver, not a vehicle session — selling never requires
+    // one to exist. When the driver has an OPEN inventory session, the sale attaches to it so
+    // expected-stock math keeps working; otherwise this stays unset.
+    inventorySession: { type: mongoose.Schema.Types.ObjectId, ref: 'InventorySession' },
+    accountingPeriod: { type: mongoose.Schema.Types.ObjectId, ref: 'AccountingPeriod', required: true },
     items: { type: [saleItemSchema], required: true },
     subtotalOriginal: { type: Number, required: true, min: 0 },
     adjustment: {
@@ -59,6 +66,7 @@ const saleSchema = new mongoose.Schema(
 saleSchema.index({ driver: 1 });
 saleSchema.index({ vehicle: 1 });
 saleSchema.index({ inventorySession: 1 });
+saleSchema.index({ accountingPeriod: 1 });
 saleSchema.index({ status: 1 });
 saleSchema.index({ createdAt: -1 });
 

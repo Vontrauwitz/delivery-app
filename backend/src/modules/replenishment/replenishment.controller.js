@@ -3,10 +3,10 @@ const service = require('./replenishment.service');
 
 async function getSuggestions(req, res, next) {
   try {
-    if (!req.query.vehicle) {
-      return next(new HttpError(400, 'El parámetro vehicle es requerido'));
+    if (!req.query.driver) {
+      return next(new HttpError(400, 'El parámetro driver es requerido'));
     }
-    const result = await service.getReplenishmentSuggestions(req.query.vehicle);
+    const result = await service.getReplenishmentSuggestions(req.query.driver);
     res.json(result);
   } catch (err) {
     next(err);

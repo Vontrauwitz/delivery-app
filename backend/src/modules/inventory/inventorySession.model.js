@@ -11,10 +11,15 @@ const stockItemSchema = new mongoose.Schema(
 
 const inventorySessionSchema = new mongoose.Schema(
   {
-    vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'Vehicle', required: true },
+    // Inventory belongs to the driver, not the vehicle — a driver switching vehicles (broken
+    // down, reassigned, etc.) never resets, closes, or transfers their inventory. `vehicle` is
+    // kept only as a historical snapshot of what the driver was using when the session opened.
     driver: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    // The driver's OPEN WorkShift at the moment the session was opened.
-    workShift: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkShift', required: true },
+    vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'Vehicle' },
+    // The driver's OPEN WorkShift at the moment the session was opened — optional, since a
+    // session can now be created automatically (first sale, a manager replenishing stock
+    // ahead of the driver's shift) without one existing yet. Purely informational.
+    workShift: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkShift' },
     businessDate: { type: Date, required: true },
     startedAt: { type: Date, required: true, default: Date.now },
     endedAt: { type: Date },
@@ -29,10 +34,10 @@ const inventorySessionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Only one non-CLOSED session (OPEN or CLOSING_PENDING) per vehicle at a time —
-// a vehicle isn't free for a new session until its current one is fully CLOSED.
+// Only one non-CLOSED session (OPEN or CLOSING_PENDING) per driver at a time —
+// a driver isn't free for a new session until their current one is fully CLOSED.
 inventorySessionSchema.index(
-  { vehicle: 1, status: 1 },
+  { driver: 1, status: 1 },
   {
     unique: true,
     partialFilterExpression: {
@@ -40,7 +45,7 @@ inventorySessionSchema.index(
     },
   }
 );
-inventorySessionSchema.index({ driver: 1 });
+inventorySessionSchema.index({ vehicle: 1 });
 inventorySessionSchema.index({ businessDate: 1 });
 
 module.exports = mongoose.model('InventorySession', inventorySessionSchema);

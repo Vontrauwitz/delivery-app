@@ -8,6 +8,7 @@ const auditLogSchema = new mongoose.Schema({
     enum: [
       'CREATE',
       'UPDATE',
+      'REPLENISH',
       'APPROVE',
       'CANCEL',
       'MARK_INCIDENT',

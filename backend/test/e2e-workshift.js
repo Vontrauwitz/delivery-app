@@ -18,15 +18,16 @@ async function main() {
   const managerToken = managerLogin.data.token;
   const driverLogin = await req('/auth/login', { method: 'POST', body: { email: 'driver@delivery.test', password: '123456' } });
   const driverToken = driverLogin.data.token;
+  const driverId = driverLogin.data.user.id;
   assert(managerLogin.status === 200 && driverLogin.status === 200, 'manager and driver login succeed');
 
   const products = (await req('/products', { token: driverToken })).data;
   // Selected by stable name, not array position: Product.create() inserts all three seed
   // products in the same millisecond, so GET /products (sorted by createdAt desc) does not
   // reliably come back in insertion order.
-  const agua = findProductByName(products, 'Agua 600ml');
-  const refresco = findProductByName(products, 'Refresco');
-  const papas = findProductByName(products, 'Papas fritas');
+  const agua = findProductByName(products, 'Perro');
+  const refresco = findProductByName(products, 'Ratón');
+  const papas = findProductByName(products, 'Grillo');
   const vehicle = (await req('/vehicles', { token: managerToken })).data[0];
 
   // 1-2. Driver logs in, browses without a shift.
@@ -50,7 +51,7 @@ async function main() {
   const sessionNoShift = await req('/inventory-sessions', {
     method: 'POST',
     token: managerToken,
-    body: { vehicle: vehicle._id, initialStock: [{ product: agua._id, quantity: 50 }] },
+    body: { driver: driverId, initialStock: [{ product: agua._id, quantity: 50 }] },
     expectStatus: 400,
   });
   assert(/turno/i.test(sessionNoShift.data.error), 'session-open-without-shift error clearly mentions the shift requirement');
@@ -71,7 +72,7 @@ async function main() {
   const activeShift = await req('/work-shifts/active/mine', { token: driverToken, expectStatus: 200 });
   assert(activeShift.data._id === shift1Id, 'active shift endpoint reflects the started shift');
 
-  // 5. Manager opens InventorySession for that driver's vehicle.
+  // 5. Manager opens InventorySession for that driver.
   const initialStock = [
     { product: agua._id, quantity: 50 },
     { product: refresco._id, quantity: 30 },
@@ -80,18 +81,18 @@ async function main() {
   const openSession = await req('/inventory-sessions', {
     method: 'POST',
     token: managerToken,
-    body: { vehicle: vehicle._id, initialStock },
+    body: { driver: driverId, initialStock },
     expectStatus: 201,
   });
   const session1 = openSession.data;
   assert(session1.status === 'OPEN', 'session opened with status OPEN');
   assert(!!session1.workShift, 'session automatically associated with the active work shift');
 
-  // Only one active session per vehicle, checked while OPEN.
+  // Only one active session per driver, checked while OPEN.
   const duringOpen = await req('/inventory-sessions', {
     method: 'POST',
     token: managerToken,
-    body: { vehicle: vehicle._id, initialStock },
+    body: { driver: driverId, initialStock },
     expectStatus: 400,
   });
   assert(/activa/i.test(duringOpen.data.error), 'blocked opening a second session while one is OPEN');
@@ -144,23 +145,27 @@ async function main() {
   const sessionAfterClosing = await req(`/inventory-sessions/${session1._id}`, { token: managerToken, expectStatus: 200 });
   assert(sessionAfterClosing.data.status === 'CLOSING_PENDING', 'session transitioned to CLOSING_PENDING on closing submission');
 
-  // Only one active session per vehicle also holds while CLOSING_PENDING (not just OPEN) —
-  // a vehicle isn't free for a new session until its current one is fully CLOSED.
+  // Only one active session per driver also holds while CLOSING_PENDING (not just OPEN) —
+  // a driver isn't free for a new session until their current one is fully CLOSED.
   const duringClosingPending = await req('/inventory-sessions', {
     method: 'POST',
     token: managerToken,
-    body: { vehicle: vehicle._id, initialStock },
+    body: { driver: driverId, initialStock },
     expectStatus: 400,
   });
   assert(/activa/i.test(duringClosingPending.data.error), 'blocked opening a second session while the first is CLOSING_PENDING');
 
-  // 10. Confirm driver can no longer create a sale.
-  await req('/sales', {
+  // 10. Selling never depends on inventory session state — the driver can still sell while
+  // the session is CLOSING_PENDING. The sale simply doesn't attach to the frozen session
+  // (ensureActiveSessionForDriver deliberately does not create a new one while one is
+  // CLOSING_PENDING — that one is frozen, awaiting the manager).
+  const saleWhileFrozen = await req('/sales', {
     method: 'POST',
     token: driverToken,
     body: { items: [{ product: agua._id, quantity: 1 }], adjustment: { amount: 0, reason: '' }, payments: [{ method: 'cash', amount: agua.basePrice }] },
-    expectStatus: 400,
+    expectStatus: 201,
   });
+  assert(!saleWhileFrozen.data.inventorySession, 'sale created while the session is CLOSING_PENDING has no inventorySession attached');
 
   // 11. Confirm driver cannot create another partial count.
   await req('/inventory-counts/partial', {
@@ -194,7 +199,7 @@ async function main() {
   assert(finalized.data.status === 'CLOSED', 'closing finalized -> CLOSED');
   assert(finalized.data.expectedCash === expectedCashBeforeClosing, 'finalize recompute matches the frozen expectedCash (no drift, since sale mutations were blocked)');
 
-  // 15. Confirm session becomes CLOSED, and a new session can now be opened on the vehicle.
+  // 15. Confirm session becomes CLOSED, and a new session can now be opened for the driver.
   const sessionClosed = await req(`/inventory-sessions/${session1._id}`, { token: managerToken, expectStatus: 200 });
   assert(sessionClosed.data.status === 'CLOSED', 'session status CLOSED after finalize');
   assert(!!sessionClosed.data.endedAt, 'session endedAt set after finalize');
@@ -258,7 +263,7 @@ async function main() {
   const openSession2 = await req('/inventory-sessions', {
     method: 'POST',
     token: managerToken,
-    body: { vehicle: vehicle._id, initialStock },
+    body: { driver: driverId, initialStock },
     expectStatus: 201,
   });
   const session2 = openSession2.data;
@@ -280,13 +285,23 @@ async function main() {
   const sessionPending2 = await req(`/inventory-sessions/${session2._id}`, { token: managerToken, expectStatus: 200 });
   assert(sessionPending2.data.status === 'CLOSING_PENDING', 'second session also transitions to CLOSING_PENDING');
 
-  const saleBlockedBeforeReopen = await req('/sales', {
+  // Selling is still never blocked by session state — but counting/closing genuinely require
+  // an active session, so those stay blocked until the manager reopens it.
+  const saleStillAllowedBeforeReopen = await req('/sales', {
     method: 'POST',
     token: driverToken,
     body: { items: [{ product: agua._id, quantity: 1 }], adjustment: { amount: 0, reason: '' }, payments: [{ method: 'cash', amount: agua.basePrice }] },
+    expectStatus: 201,
+  });
+  assert(!saleStillAllowedBeforeReopen.data.inventorySession, 'selling stays available even while the session is CLOSING_PENDING before reopen');
+
+  const partialBlockedBeforeReopen = await req('/inventory-counts/partial', {
+    method: 'POST',
+    token: driverToken,
+    body: { counts: [{ product: agua._id, quantityCounted: 1 }] },
     expectStatus: 400,
   });
-  assert(saleBlockedBeforeReopen.status === 400, 'operational action still blocked before reopen');
+  assert(partialBlockedBeforeReopen.status === 400, 'counting is still blocked before reopen (it genuinely requires an active session)');
 
   const reopenNoReason = await req(`/closings/${closing2.data._id}/reopen`, { method: 'PATCH', token: managerToken, body: {}, expectStatus: 400 });
   assert(/motivo/i.test(reopenNoReason.data.error), 'reopen requires a reason');

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TextInput, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { Link } from 'expo-router';
 import { useAuth } from '../../src/modules/auth/useAuth';
 import * as closingApi from '../../src/modules/closing/api';
 import { formatCurrency } from '../../src/shared/money';
@@ -78,6 +79,12 @@ export default function ClosingsScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <ScreenHeader title="Cierres" backHref="/admin" onRefresh={load} refreshing={loading} />
 
+      <Link href="/admin/accounting-periods" asChild>
+        <Pressable style={styles.periodsLink}>
+          <Text style={styles.periodsLinkText}>Ver períodos contables →</Text>
+        </Pressable>
+      </Link>
+
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {loading ? (
@@ -92,14 +99,15 @@ export default function ClosingsScreen() {
             onPress={() => setSelectedId(c._id === selectedId ? null : c._id)}
           >
             <View style={styles.cardRow}>
-              <Text style={styles.driver}>
-                {c.driver?.name} — {c.vehicle?.name}
-              </Text>
+              <Text style={styles.driver}>{c.driver?.name}</Text>
               <Text style={[styles.status, CLOSING_STATUS_COLORS[c.status] && { color: CLOSING_STATUS_COLORS[c.status] }]}>
                 {CLOSING_STATUS_LABELS[c.status]}
               </Text>
             </View>
-            <Text style={styles.date}>{new Date(c.date).toLocaleDateString()}</Text>
+            <Text style={styles.date}>
+              {new Date(c.date).toLocaleDateString()}
+              {c.vehicle?.name ? ` · ${c.vehicle.name}` : ''}
+            </Text>
             <View style={styles.cardRow}>
               <Text style={styles.cashLine}>Esperado: {formatCurrency(c.expectedCash)}</Text>
               <Text style={styles.cashLine}>Reportado: {formatCurrency(c.reportedCash)}</Text>
@@ -167,6 +175,8 @@ export default function ClosingsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 20, paddingBottom: 60 },
+  periodsLink: { alignSelf: 'flex-start', marginBottom: 16 },
+  periodsLinkText: { color: '#2563eb', fontWeight: '600', fontSize: 13 },
   error: { color: '#dc2626', marginBottom: 8 },
   empty: { color: '#666', marginTop: 20, textAlign: 'center' },
   card: { borderWidth: 1, borderColor: '#e5e5e5', borderRadius: 10, padding: 12, marginBottom: 10 },

@@ -12,8 +12,8 @@ export function getCount(token, id) {
   return request(`/inventory-counts/${id}`, { token });
 }
 
-export function createWeeklyCount(token, { vehicle, counts, weekOf }) {
-  return request('/inventory-counts/weekly', { method: 'POST', body: { vehicle, counts, weekOf }, token });
+export function createWeeklyCount(token, { driver, counts, weekOf }) {
+  return request('/inventory-counts/weekly', { method: 'POST', body: { driver, counts, weekOf }, token });
 }
 
 export function listWeeklyCounts(token, params = {}) {

@@ -4,6 +4,7 @@ const round2 = require('../../shared/round2');
 const { WORK_SHIFT_STATUSES } = require('../../shared/constants');
 const vehiclesService = require('../vehicles/vehicles.service');
 const auditService = require('../audit/audit.service');
+const scheduledShiftsService = require('../scheduledShifts/scheduledShifts.service');
 
 async function getOpenShiftForDriver(driverId) {
   return WorkShift.findOne({ driver: driverId, status: WORK_SHIFT_STATUSES.OPEN });
@@ -102,6 +103,10 @@ async function startShift(driverId) {
     changes: [{ field: 'status', oldValue: null, newValue: WORK_SHIFT_STATUSES.OPEN }],
     performedBy: driverId,
   });
+
+  // One-time match against the manager's schedule, for comparison only — this never affects
+  // the WorkShift's own timestamps and is never revisited later.
+  await scheduledShiftsService.matchWorkShiftToSchedule(driverId, shift);
 
   return getShiftById(shift._id);
 }

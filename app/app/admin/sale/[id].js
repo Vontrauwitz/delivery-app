@@ -6,12 +6,15 @@ import * as productsApi from '../../../src/modules/products/api';
 import * as salesApi from '../../../src/modules/sales/api';
 import * as approvalsApi from '../../../src/modules/approvals/api';
 import * as auditApi from '../../../src/modules/audit/api';
-import ProductPicker from '../../../src/modules/sales/ProductPicker';
+import ProductCard from '../../../src/modules/sales/ProductCard';
 import PaymentSplitInput from '../../../src/modules/sales/PaymentSplitInput';
 import { round2, formatCurrency } from '../../../src/shared/money';
+import { computeAdjustment } from '../../../src/shared/saleTotals';
 import { SALE_STATUS_LABELS, SALE_STATUS_COLORS } from '../../../src/shared/constants';
+import { colors, spacing, radii, typography, softShadow } from '../../../src/shared/theme';
 
 const EDITABLE_STATUSES = ['PENDING', 'INCIDENT'];
+const PAYMENT_METHOD_LABELS = { cash: 'Efectivo', transfer: 'Transferencia' };
 
 export default function SaleDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -25,8 +28,13 @@ export default function SaleDetailScreen() {
   const [error, setError] = useState('');
   const [banner, setBanner] = useState('');
 
+  // review = the clean receipt summary (default); edit = the full editable form. Mutually
+  // exclusive on purpose — "Guardar cambios" and "Aprobar venta" never compete for attention.
+  const [mode, setMode] = useState('review');
+  const [historyOpen, setHistoryOpen] = useState(false);
+
   const [quantities, setQuantities] = useState({});
-  const [adjustmentAmount, setAdjustmentAmount] = useState('0');
+  const [finalTotalInput, setFinalTotalInput] = useState('0');
   const [adjustmentReason, setAdjustmentReason] = useState('');
   const [cashAmount, setCashAmount] = useState('0');
   const [transferAmount, setTransferAmount] = useState('0');
@@ -43,7 +51,7 @@ export default function SaleDetailScreen() {
       q[productId] = item.quantity;
     });
     setQuantities(q);
-    setAdjustmentAmount(String(saleData.adjustment?.amount ?? 0));
+    setFinalTotalInput(String(saleData.totalFinal ?? 0));
     setAdjustmentReason(saleData.adjustment?.reason ?? '');
     const cash = saleData.payments.find((p) => p.method === 'cash');
     const transfer = saleData.payments.find((p) => p.method === 'transfer');
@@ -84,17 +92,32 @@ export default function SaleDetailScreen() {
     .filter((item) => item.quantity > 0);
 
   const subtotal = round2(items.reduce((sum, item) => sum + item.product.basePrice * item.quantity, 0));
-  const adjustmentValue = round2(Number(adjustmentAmount) || 0);
-  const totalFinal = round2(subtotal + adjustmentValue);
+  // Same "calculated total vs final total" model as the driver's POS screen — the manager edits
+  // one final total, and the adjustment (with its required reason) is derived from it.
+  const finalTotal = round2(Number(finalTotalInput) || 0);
+  const { amount: adjustmentValue, needsReason } = computeAdjustment(finalTotal, subtotal);
   const cashValue = round2(Number(cashAmount) || 0);
   const transferValue = round2(Number(transferAmount) || 0);
   const paymentsSum = round2(cashValue + transferValue);
-  const paymentsMatch = paymentsSum === totalFinal;
-  const needsReason = adjustmentValue !== 0;
+  const paymentsMatch = paymentsSum === finalTotal;
   const reasonOk = !needsReason || adjustmentReason.trim().length > 0;
 
   const isEditable = sale && EDITABLE_STATUSES.includes(sale.status);
-  const canSave = isEditable && items.length > 0 && totalFinal > 0 && paymentsMatch && reasonOk && !saving;
+  const canSave = isEditable && items.length > 0 && finalTotal > 0 && paymentsMatch && reasonOk && !saving;
+
+  function startEdit() {
+    applySaleToForm(sale);
+    setBanner('');
+    setError('');
+    setActionMode('idle');
+    setMode('edit');
+  }
+
+  function cancelEdit() {
+    applySaleToForm(sale);
+    setError('');
+    setMode('review');
+  }
 
   async function refreshAudit() {
     const auditData = await auditApi.getAuditHistory(token, 'Sale', id);
@@ -112,12 +135,13 @@ export default function SaleDetailScreen() {
 
       const updated = await approvalsApi.updateSale(token, id, {
         items: items.map((item) => ({ product: item.product._id, quantity: item.quantity })),
-        adjustment: { amount: adjustmentValue, reason: adjustmentReason.trim() },
+        adjustment: { amount: adjustmentValue, reason: adjustmentValue !== 0 ? adjustmentReason.trim() : '' },
         payments,
       });
       setSale(updated);
       applySaleToForm(updated);
       setBanner('Cambios guardados.');
+      setMode('review');
       await refreshAudit();
     } catch (err) {
       setError(err.message || 'No se pudieron guardar los cambios');
@@ -196,7 +220,7 @@ export default function SaleDetailScreen() {
           </Pressable>
         </View>
         <View style={styles.center}>
-          <ActivityIndicator />
+          <ActivityIndicator color={colors.primary} />
         </View>
       </View>
     );
@@ -217,230 +241,456 @@ export default function SaleDetailScreen() {
     );
   }
 
+  const adjustmentAmountOnSale = sale.adjustment?.amount || 0;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Pressable onPress={() => router.back()} hitSlop={8}>
         <Text style={styles.back}>← Volver</Text>
       </Pressable>
 
-      <Text style={styles.title}>Detalle de venta</Text>
-      <Text style={[styles.status, { color: SALE_STATUS_COLORS[sale.status] }]}>
-        {SALE_STATUS_LABELS[sale.status]}
+      <Text style={[styles.title, { color: SALE_STATUS_COLORS[sale.status] }]}>
+        Venta {SALE_STATUS_LABELS[sale.status].toLowerCase()}
       </Text>
+      <Text style={styles.driverName}>{sale.driver?.name}</Text>
+      <Text style={styles.dateLine}>{new Date(sale.createdAt).toLocaleString()}</Text>
 
-      <View style={styles.metaBox}>
-        <Text style={styles.metaLine}>
-          Creada por: {sale.createdBy?.name} ({sale.createdBy?.email})
+      {sale.status === 'APPROVED' && sale.approval?.approvedAt && (
+        <Text style={styles.metaNote}>
+          Aprobada por {sale.approval.approvedBy?.name} el {new Date(sale.approval.approvedAt).toLocaleString()}
         </Text>
-        <Text style={styles.metaLine}>Fecha de creación: {new Date(sale.createdAt).toLocaleString()}</Text>
-        {sale.approval?.approvedAt && (
-          <Text style={styles.metaLine}>
-            Aprobada por: {sale.approval.approvedBy?.name} el {new Date(sale.approval.approvedAt).toLocaleString()}
-          </Text>
-        )}
-        {sale.cancellation?.cancelledAt && (
-          <Text style={styles.metaLine}>Cancelada — motivo: {sale.cancellation.reason}</Text>
-        )}
-        {sale.incident?.markedAt && <Text style={styles.metaLine}>Incidente — nota: {sale.incident.note}</Text>}
-      </View>
+      )}
+      {sale.status === 'CANCELLED' && sale.cancellation && (
+        <Text style={styles.metaNoteDanger}>Cancelada — motivo: {sale.cancellation.reason}</Text>
+      )}
+      {sale.status === 'INCIDENT' && sale.incident && (
+        <Text style={styles.metaNoteWarning}>Incidente — nota: {sale.incident.note}</Text>
+      )}
 
       {banner ? <Text style={styles.success}>{banner}</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {!isEditable && (
-        <Text style={styles.readonlyNote}>
-          Esta venta está en estado {SALE_STATUS_LABELS[sale.status]} y ya no puede modificarse.
-        </Text>
-      )}
+      {mode === 'review' ? (
+        <>
+          <View style={styles.receiptCard}>
+            <Text style={styles.sectionTitle}>Productos</Text>
+            {sale.items.map((item, index) => (
+              <View key={item.product?._id || item.product || index} style={styles.receiptRow}>
+                <Text style={styles.receiptItemName}>
+                  {item.product?.icon} {item.product?.name} ×{item.quantity}
+                </Text>
+                <Text style={styles.receiptItemValue}>{formatCurrency(item.subtotal)}</Text>
+              </View>
+            ))}
 
-      <Text style={styles.sectionTitle}>Productos</Text>
-      <ProductPicker
-        products={products}
-        quantities={quantities}
-        onChangeQuantity={isEditable ? handleChangeQuantity : () => {}}
-      />
+            <View style={styles.divider} />
 
-      <Text style={styles.sectionTitle}>Ajuste</Text>
-      <TextInput
-        style={styles.input}
-        keyboardType="numeric"
-        editable={isEditable}
-        value={adjustmentAmount}
-        onChangeText={setAdjustmentAmount}
-      />
-      <TextInput
-        style={styles.input}
-        editable={isEditable}
-        placeholder={needsReason ? 'Motivo del ajuste (obligatorio)' : 'Motivo del ajuste'}
-        value={adjustmentReason}
-        onChangeText={setAdjustmentReason}
-      />
+            <View style={styles.receiptRow}>
+              <Text style={styles.receiptLabel}>Subtotal</Text>
+              <Text style={styles.receiptValue}>{formatCurrency(sale.subtotalOriginal)}</Text>
+            </View>
 
-      <Text style={styles.sectionTitle}>Pago</Text>
-      <PaymentSplitInput
-        cashAmount={cashAmount}
-        transferAmount={transferAmount}
-        onChangeCash={setCashAmount}
-        onChangeTransfer={setTransferAmount}
-        editable={isEditable}
-      />
-
-      <View style={styles.summary}>
-        <SummaryRow label="Subtotal" value={formatCurrency(subtotal)} />
-        <SummaryRow label="Ajuste" value={formatCurrency(adjustmentValue)} />
-        <SummaryRow label="Total" value={formatCurrency(totalFinal)} bold />
-        <SummaryRow label="Suma de pagos" value={formatCurrency(paymentsSum)} />
-        {!paymentsMatch && <Text style={styles.warning}>La suma de los pagos debe ser igual al total.</Text>}
-      </View>
-
-      {isEditable && (
-        <Pressable style={[styles.button, !canSave && styles.buttonDisabled]} onPress={handleSave} disabled={!canSave}>
-          {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Guardar cambios</Text>}
-        </Pressable>
-      )}
-
-      {isEditable && (
-        <View style={styles.actionsRow}>
-          <Pressable
-            style={[styles.actionButton, styles.approveButton]}
-            onPress={handleApprove}
-            disabled={actionSubmitting}
-          >
-            <Text style={styles.actionButtonText}>Aprobar</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.actionButton, styles.cancelButton]}
-            onPress={() => setActionMode(actionMode === 'cancel' ? 'idle' : 'cancel')}
-            disabled={actionSubmitting}
-          >
-            <Text style={styles.actionButtonText}>Cancelar</Text>
-          </Pressable>
-          {sale.status === 'PENDING' && (
-            <Pressable
-              style={[styles.actionButton, styles.incidentButton]}
-              onPress={() => setActionMode(actionMode === 'incident' ? 'idle' : 'incident')}
-              disabled={actionSubmitting}
-            >
-              <Text style={styles.actionButtonText}>Marcar incidente</Text>
-            </Pressable>
-          )}
-        </View>
-      )}
-
-      {actionMode === 'cancel' && (
-        <View style={styles.reasonBox}>
-          <Text style={styles.sectionTitle}>Motivo de cancelación</Text>
-          <TextInput
-            style={styles.input}
-            value={reasonText}
-            onChangeText={setReasonText}
-            placeholder="Motivo (obligatorio)"
-          />
-          <Pressable style={styles.button} onPress={handleConfirmCancel} disabled={actionSubmitting}>
-            {actionSubmitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Confirmar cancelación</Text>
+            {adjustmentAmountOnSale !== 0 && (
+              <>
+                <View style={styles.receiptRow}>
+                  <Text style={styles.receiptLabel}>Ajuste</Text>
+                  <Text style={[styles.receiptValue, styles.adjustmentValue]}>
+                    {adjustmentAmountOnSale > 0 ? '+' : ''}
+                    {formatCurrency(adjustmentAmountOnSale)}
+                  </Text>
+                </View>
+                {sale.adjustment?.reason ? <Text style={styles.adjustmentReasonText}>"{sale.adjustment.reason}"</Text> : null}
+              </>
             )}
-          </Pressable>
-        </View>
-      )}
 
-      {actionMode === 'incident' && (
-        <View style={styles.reasonBox}>
-          <Text style={styles.sectionTitle}>Nota del incidente</Text>
-          <TextInput
-            style={styles.input}
-            value={reasonText}
-            onChangeText={setReasonText}
-            placeholder="Nota (obligatoria)"
-          />
-          <Pressable style={styles.button} onPress={handleConfirmIncident} disabled={actionSubmitting}>
-            {actionSubmitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Confirmar incidente</Text>
-            )}
-          </Pressable>
-        </View>
-      )}
+            <View style={styles.divider} />
 
-      <Text style={styles.sectionTitle}>Historial de cambios</Text>
-      {auditEntries.length === 0 ? (
-        <Text style={styles.empty}>Sin cambios registrados.</Text>
-      ) : (
-        auditEntries.map((entry) => (
-          <View key={entry._id} style={styles.auditEntry}>
-            <Text style={styles.auditAction}>
-              {entry.action} — {entry.performedBy?.name} — {new Date(entry.performedAt).toLocaleString()}
-            </Text>
-            {entry.changes?.map((change, idx) => (
-              <Text key={idx} style={styles.auditChange}>
-                {change.field}: {JSON.stringify(change.oldValue)} → {JSON.stringify(change.newValue)}
-              </Text>
+            <View style={styles.receiptRow}>
+              <Text style={styles.totalLabel}>TOTAL</Text>
+              <Text style={styles.totalValue}>{formatCurrency(sale.totalFinal)}</Text>
+            </View>
+          </View>
+
+          <View style={styles.receiptCard}>
+            <Text style={styles.sectionTitle}>Pago</Text>
+            {sale.payments.map((p, idx) => (
+              <View key={idx} style={styles.receiptRow}>
+                <Text style={styles.receiptItemName}>{PAYMENT_METHOD_LABELS[p.method] || p.method}</Text>
+                <Text style={styles.receiptItemValue}>{formatCurrency(p.amount)}</Text>
+              </View>
             ))}
           </View>
-        ))
+
+          {isEditable ? (
+            <Pressable style={styles.approveButton} onPress={handleApprove} disabled={actionSubmitting}>
+              {actionSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.approveButtonText}>Aprobar venta</Text>}
+            </Pressable>
+          ) : (
+            <Text style={styles.readonlyNote}>
+              Esta venta está en estado {SALE_STATUS_LABELS[sale.status]} y ya no puede modificarse.
+            </Text>
+          )}
+
+          {isEditable && (
+            <View style={styles.quietActionsRow}>
+              <Pressable onPress={startEdit} disabled={actionSubmitting} hitSlop={8}>
+                <Text style={styles.quietAction}>Editar</Text>
+              </Pressable>
+              {sale.status === 'PENDING' && (
+                <Pressable
+                  onPress={() => setActionMode(actionMode === 'incident' ? 'idle' : 'incident')}
+                  disabled={actionSubmitting}
+                  hitSlop={8}
+                >
+                  <Text style={styles.quietAction}>Incidente</Text>
+                </Pressable>
+              )}
+              <Pressable
+                onPress={() => setActionMode(actionMode === 'cancel' ? 'idle' : 'cancel')}
+                disabled={actionSubmitting}
+                hitSlop={8}
+              >
+                <Text style={styles.quietActionDanger}>Cancelar</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {actionMode === 'cancel' && (
+            <View style={styles.reasonBox}>
+              <Text style={styles.sectionTitle}>Motivo de cancelación</Text>
+              <TextInput
+                style={styles.input}
+                value={reasonText}
+                onChangeText={setReasonText}
+                placeholder="Motivo (obligatorio)"
+                placeholderTextColor={colors.textTertiary}
+              />
+              <Pressable style={styles.reasonButton} onPress={handleConfirmCancel} disabled={actionSubmitting}>
+                {actionSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.reasonButtonText}>Confirmar cancelación</Text>}
+              </Pressable>
+            </View>
+          )}
+
+          {actionMode === 'incident' && (
+            <View style={styles.reasonBox}>
+              <Text style={styles.sectionTitle}>Nota del incidente</Text>
+              <TextInput
+                style={styles.input}
+                value={reasonText}
+                onChangeText={setReasonText}
+                placeholder="Nota (obligatoria)"
+                placeholderTextColor={colors.textTertiary}
+              />
+              <Pressable style={styles.reasonButton} onPress={handleConfirmIncident} disabled={actionSubmitting}>
+                {actionSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.reasonButtonText}>Confirmar incidente</Text>}
+              </Pressable>
+            </View>
+          )}
+        </>
+      ) : (
+        <View style={styles.editCard}>
+          <View style={styles.editHeaderRow}>
+            <Text style={styles.sectionTitle}>Editando venta</Text>
+            <Pressable onPress={cancelEdit} hitSlop={8}>
+              <Text style={styles.quietAction}>Cancelar edición</Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.editSubsectionTitle}>Productos</Text>
+          <View style={styles.pickerGrid}>
+            {products.map((product) => {
+              const productQuantity = quantities[product._id] || 0;
+              return (
+                <ProductCard
+                  key={product._id}
+                  product={product}
+                  quantity={productQuantity}
+                  style={styles.pickerCard}
+                  onIncrement={() => handleChangeQuantity(product._id, productQuantity + 1)}
+                  onDecrement={() => handleChangeQuantity(product._id, Math.max(0, productQuantity - 1))}
+                />
+              );
+            })}
+          </View>
+
+          <Text style={styles.editSubsectionTitle}>En la venta</Text>
+          {items.length === 0 ? (
+            <Text style={styles.emptyCart}>Toca un producto para agregarlo</Text>
+          ) : (
+            <View style={styles.cartCard}>
+              {items.map((item, index) => (
+                <View key={item.product._id} style={[styles.cartRow, index === items.length - 1 && styles.cartRowLast]}>
+                  <Text style={styles.cartIcon}>{item.product.icon || '📦'}</Text>
+                  <View style={styles.cartMain}>
+                    <View style={styles.cartTopLine}>
+                      <Text style={styles.cartName} numberOfLines={1}>
+                        {item.product.name}
+                      </Text>
+                      <Text style={styles.cartLineTotal}>{formatCurrency(item.product.basePrice * item.quantity)}</Text>
+                    </View>
+                    <View style={styles.cartBottomLine}>
+                      <Text style={styles.cartUnitPrice}>{formatCurrency(item.product.basePrice)} c/u</Text>
+                      <View style={styles.cartStepper}>
+                        <Pressable
+                          style={styles.cartStepperButton}
+                          hitSlop={8}
+                          onPress={() => handleChangeQuantity(item.product._id, Math.max(0, item.quantity - 1))}
+                        >
+                          <Text style={styles.cartStepperText}>−</Text>
+                        </Pressable>
+                        <Text style={styles.cartQty}>{item.quantity}</Text>
+                        <Pressable
+                          style={styles.cartStepperButton}
+                          hitSlop={8}
+                          onPress={() => handleChangeQuantity(item.product._id, item.quantity + 1)}
+                        >
+                          <Text style={styles.cartStepperText}>+</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <View style={styles.totalBox}>
+            <View style={styles.totalRow}>
+              <Text style={styles.totalCalculatedLabel}>Total calculado</Text>
+              <Text style={styles.totalCalculatedValue}>{formatCurrency(subtotal)}</Text>
+            </View>
+            <View style={styles.totalRow}>
+              <Text style={styles.totalFinalLabel}>Total final</Text>
+              <TextInput
+                style={styles.totalInput}
+                keyboardType="numeric"
+                value={finalTotalInput}
+                onChangeText={setFinalTotalInput}
+              />
+            </View>
+            {needsReason && (
+              <View style={styles.adjustmentBox}>
+                <Text style={styles.adjustmentLine}>
+                  Ajuste: {adjustmentValue > 0 ? '+' : ''}
+                  {formatCurrency(adjustmentValue)}
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  value={adjustmentReason}
+                  onChangeText={setAdjustmentReason}
+                  placeholder="Motivo del ajuste (obligatorio)"
+                  placeholderTextColor={colors.textTertiary}
+                />
+              </View>
+            )}
+          </View>
+
+          <Text style={styles.editSubsectionTitle}>Pago</Text>
+          <PaymentSplitInput
+            cashAmount={cashAmount}
+            transferAmount={transferAmount}
+            onChangeCash={setCashAmount}
+            onChangeTransfer={setTransferAmount}
+          />
+          {!paymentsMatch && <Text style={styles.warning}>La suma de los pagos debe ser igual al total final.</Text>}
+
+          <Pressable style={[styles.saveButton, !canSave && styles.saveButtonDisabled]} onPress={handleSave} disabled={!canSave}>
+            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Guardar cambios</Text>}
+          </Pressable>
+        </View>
+      )}
+
+      <Pressable style={styles.historyToggle} onPress={() => setHistoryOpen((v) => !v)} hitSlop={8}>
+        <Text style={styles.historyToggleText}>{historyOpen ? 'Ocultar historial ▲' : 'Ver historial ▼'}</Text>
+      </Pressable>
+      {historyOpen && (
+        <View style={styles.historyBox}>
+          {auditEntries.length === 0 ? (
+            <Text style={styles.empty}>Sin cambios registrados.</Text>
+          ) : (
+            auditEntries.map((entry) => (
+              <View key={entry._id} style={styles.auditEntry}>
+                <Text style={styles.auditAction}>
+                  {entry.action} — {entry.performedBy?.name} — {new Date(entry.performedAt).toLocaleString()}
+                </Text>
+                {entry.changes?.map((change, idx) => (
+                  <Text key={idx} style={styles.auditChange}>
+                    {change.field}: {JSON.stringify(change.oldValue)} → {JSON.stringify(change.newValue)}
+                  </Text>
+                ))}
+              </View>
+            ))
+          )}
+        </View>
       )}
     </ScrollView>
   );
 }
 
-function SummaryRow({ label, value, bold }) {
-  return (
-    <View style={styles.summaryRow}>
-      <Text style={[styles.summaryLabel, bold && styles.bold]}>{label}</Text>
-      <Text style={[styles.summaryValue, bold && styles.bold]}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 20, paddingBottom: 60 },
+  container: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  back: { color: '#2563eb', marginBottom: 12 },
-  title: { fontSize: 22, fontWeight: 'bold' },
-  status: { fontSize: 16, fontWeight: '700', marginTop: 4, marginBottom: 12 },
-  metaBox: { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 12, marginBottom: 12 },
-  metaLine: { fontSize: 13, color: '#333', marginBottom: 2 },
-  readonlyNote: { color: '#666', fontStyle: 'italic', marginBottom: 12 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8 },
+  back: { color: colors.primary, marginBottom: spacing.md, fontWeight: '600' },
+
+  title: { ...typography.title, marginTop: spacing.xs },
+  driverName: { ...typography.headline, color: colors.textPrimary, marginTop: spacing.xs },
+  dateLine: { ...typography.caption, color: colors.textSecondary, marginTop: 2, marginBottom: spacing.sm },
+  metaNote: { ...typography.caption, color: colors.success, marginBottom: spacing.sm },
+  metaNoteDanger: { ...typography.caption, color: colors.danger, marginBottom: spacing.sm },
+  metaNoteWarning: { ...typography.caption, color: colors.warning, marginBottom: spacing.sm },
+
+  error: { color: colors.danger, marginBottom: spacing.sm },
+  success: { color: colors.success, marginBottom: spacing.sm },
+
+  sectionTitle: { ...typography.headline, color: colors.textPrimary, marginBottom: spacing.sm },
+  editSubsectionTitle: { ...typography.headline, color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm },
+
+  receiptCard: {
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    ...softShadow,
+  },
+  receiptRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs },
+  receiptItemName: { ...typography.body, color: colors.textPrimary, flexShrink: 1, paddingRight: spacing.sm },
+  receiptItemValue: { ...typography.body, color: colors.textPrimary },
+  receiptLabel: { ...typography.callout, color: colors.textSecondary },
+  receiptValue: { ...typography.callout, color: colors.textPrimary },
+  adjustmentValue: { color: colors.warning, fontWeight: '700' },
+  adjustmentReasonText: { ...typography.caption, color: colors.textSecondary, fontStyle: 'italic', marginBottom: spacing.xs },
+  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
+  totalLabel: { ...typography.headline, color: colors.textPrimary },
+  totalValue: { ...typography.largeTitle, color: colors.textPrimary },
+
+  readonlyNote: { ...typography.callout, color: colors.textSecondary, fontStyle: 'italic', marginTop: spacing.lg, textAlign: 'center' },
+
+  approveButton: {
+    backgroundColor: colors.success,
+    borderRadius: radii.lg,
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
+    marginTop: spacing.xl,
+    ...softShadow,
+  },
+  approveButtonText: { color: '#fff', fontWeight: '700', fontSize: 18 },
+
+  quietActionsRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xl, marginTop: spacing.lg },
+  quietAction: { color: colors.textSecondary, fontSize: 14, fontWeight: '600' },
+  quietActionDanger: { color: colors.danger, fontSize: 14, fontWeight: '600' },
+
+  reasonBox: { marginTop: spacing.lg, padding: spacing.md, backgroundColor: colors.dangerMuted, borderRadius: radii.lg },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 10,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
     fontSize: 16,
+    backgroundColor: colors.surface,
+    color: colors.textPrimary,
   },
-  summary: { marginTop: 8, padding: 12, backgroundColor: '#f5f5f5', borderRadius: 10 },
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  summaryLabel: { fontSize: 14, color: '#333' },
-  summaryValue: { fontSize: 14, color: '#333' },
-  bold: { fontWeight: '700', fontSize: 16 },
-  warning: { color: '#dc2626', marginTop: 6, fontSize: 13 },
-  error: { color: '#dc2626', marginBottom: 8 },
-  success: { color: '#16a34a', marginBottom: 8 },
-  button: {
-    backgroundColor: '#2563eb',
-    borderRadius: 8,
-    paddingVertical: 14,
+  reasonButton: { backgroundColor: colors.textPrimary, borderRadius: radii.md, paddingVertical: spacing.md, alignItems: 'center' },
+  reasonButtonText: { color: '#fff', fontWeight: '600' },
+
+  editCard: {
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    ...softShadow,
+  },
+  editHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
+
+  // Responsive product-picker grid: each card has a minimum width (flexBasis) and grows to fill
+  // leftover row space (flexGrow) up to a cap (maxWidth) — flexWrap naturally packs 2 columns on
+  // a narrow phone or a Fold's cover screen, 3-4 on a Fold opened or a tablet, and more on a wide
+  // web window, with no device-specific breakpoints.
+  pickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs },
+  pickerCard: { flexGrow: 1, flexBasis: 130, maxWidth: 200 },
+
+  emptyCart: {
+    ...typography.callout,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    paddingVertical: spacing.lg,
+  },
+  cartCard: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+  },
+  cartRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  buttonDisabled: { opacity: 0.5 },
-  buttonText: { color: '#fff', fontWeight: '600', fontSize: 16 },
-  actionsRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  actionButton: { flex: 1, borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
-  approveButton: { backgroundColor: '#16a34a' },
-  cancelButton: { backgroundColor: '#6b7280' },
-  incidentButton: { backgroundColor: '#dc2626' },
-  actionButtonText: { color: '#fff', fontWeight: '600' },
-  reasonBox: { marginTop: 12, padding: 12, backgroundColor: '#fef2f2', borderRadius: 10 },
-  empty: { color: '#666' },
-  auditEntry: { borderTopWidth: 1, borderTopColor: '#eee', paddingVertical: 8 },
-  auditAction: { fontSize: 13, fontWeight: '600', color: '#333' },
-  auditChange: { fontSize: 12, color: '#666', marginLeft: 8 },
+  cartRowLast: { borderBottomWidth: 0 },
+  cartIcon: { fontSize: 28 },
+  cartMain: { flex: 1 },
+  cartTopLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cartName: { ...typography.body, fontWeight: '600', color: colors.textPrimary, flexShrink: 1, paddingRight: spacing.sm },
+  cartLineTotal: { ...typography.headline, color: colors.textPrimary },
+  cartBottomLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 },
+  cartUnitPrice: { ...typography.caption, color: colors.textSecondary },
+  cartStepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  cartStepperButton: {
+    width: 28,
+    height: 28,
+    borderRadius: radii.full,
+    backgroundColor: colors.neutralMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cartStepperText: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, lineHeight: 18 },
+  cartQty: { ...typography.body, fontWeight: '600', color: colors.textPrimary, minWidth: 20, textAlign: 'center' },
+
+  totalBox: { marginTop: spacing.lg, padding: spacing.md, backgroundColor: colors.background, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  totalCalculatedLabel: { ...typography.subhead, color: colors.textSecondary },
+  totalCalculatedValue: { ...typography.headline, color: colors.textSecondary },
+  totalFinalLabel: { ...typography.headline, color: colors.textPrimary, marginTop: spacing.sm },
+  totalInput: {
+    ...typography.title,
+    color: colors.textPrimary,
+    marginTop: spacing.sm,
+    textAlign: 'right',
+    minWidth: 120,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.surface,
+  },
+  adjustmentBox: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  adjustmentLine: { ...typography.subhead, color: colors.warning, fontWeight: '700', marginBottom: spacing.xs },
+
+  warning: { color: colors.danger, marginTop: spacing.xs, fontSize: 13 },
+
+  saveButton: { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.lg, alignItems: 'center', marginTop: spacing.xl },
+  saveButtonDisabled: { opacity: 0.4 },
+  saveButtonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+
+  historyToggle: { marginTop: spacing.xxl, alignItems: 'center' },
+  historyToggleText: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
+  historyBox: { marginTop: spacing.sm },
+  empty: { color: colors.textSecondary },
+  auditEntry: { borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: spacing.sm },
+  auditAction: { ...typography.caption, fontWeight: '600', color: colors.textPrimary },
+  auditChange: { ...typography.caption, color: colors.textSecondary, marginLeft: spacing.sm },
 });

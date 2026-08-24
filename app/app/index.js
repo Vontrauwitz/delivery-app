@@ -1,20 +1,16 @@
-import { ActivityIndicator, View } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useAuth } from '../src/modules/auth/useAuth';
+import AuthPendingView from '../src/modules/auth/AuthPendingView';
 import { ROLES } from '../src/shared/constants';
 
 export default function Index() {
-  const { user, isLoading } = useAuth();
+  const { status, user, authError } = useAuth();
 
-  if (isLoading) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator />
-      </View>
-    );
+  if (status === 'RESTORING' || status === 'TEMPORARILY_OFFLINE') {
+    return <AuthPendingView status={status} authError={authError} />;
   }
 
-  if (!user) {
+  if (status === 'UNAUTHENTICATED') {
     return <Redirect href="/login" />;
   }
 

@@ -1,258 +1,451 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { View, Text, ScrollView, TextInput, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { useAuth } from '../../src/modules/auth/useAuth';
+import * as usersApi from '../../src/modules/users/api';
+import * as productsApi from '../../src/modules/products/api';
 import * as inventoryApi from '../../src/modules/inventory/api';
 import * as inventoryCountsApi from '../../src/modules/inventoryCounts/api';
+import * as replenishmentApi from '../../src/modules/replenishment/api';
 import QuantityStepper from '../../src/modules/inventory/QuantityStepper';
 import { SESSION_STATUS_LABELS, COUNT_TYPE_LABELS } from '../../src/shared/constants';
 import ScreenHeader from '../../src/shared/ScreenHeader';
+import { colors, spacing, radii, typography, softShadow } from '../../src/shared/theme';
+
+// Mirrors the driver-facing wording in app/driver/inventory.js — the manager should never see
+// technical session jargon, just a plain "is this driver's inventory current" read.
+const STATUS_LABELS = { OPEN: 'Al día', CLOSING_PENDING: 'Cierre pendiente', CLOSED: 'Última actualización' };
+const STATUS_COLORS = { OPEN: colors.success, CLOSING_PENDING: colors.warning, CLOSED: colors.neutral };
 
 export default function InventoryOverviewScreen() {
-  const { session: sessionIdParam } = useLocalSearchParams();
   const { token } = useAuth();
-  const router = useRouter();
 
-  const [sessions, setSessions] = useState([]);
-  const [sessionId, setSessionId] = useState(sessionIdParam || null);
-  const [session, setSession] = useState(null);
-  const [expected, setExpected] = useState([]);
-  const [counts, setCounts] = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [selectedDriverId, setSelectedDriverId] = useState(null);
+  const [current, setCurrent] = useState(null); // { source, session, stock }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [editingStock, setEditingStock] = useState(false);
-  const [stockDraft, setStockDraft] = useState({});
-  const [savingStock, setSavingStock] = useState(false);
+  const [mode, setMode] = useState('idle'); // idle | reponer | conteo | historial
 
-  const loadSessions = useCallback(async () => {
+  const [reponerQuantities, setReponerQuantities] = useState({});
+  const [reponerSubmitting, setReponerSubmitting] = useState(false);
+  const [reponerError, setReponerError] = useState('');
+
+  const [conteoQuantities, setConteoQuantities] = useState({});
+  const [conteoSubmitting, setConteoSubmitting] = useState(false);
+  const [conteoError, setConteoError] = useState('');
+  const [conteoResult, setConteoResult] = useState(null);
+
+  const [historial, setHistorial] = useState([]);
+  const [historialLoading, setHistorialLoading] = useState(false);
+  const [expandedSessionId, setExpandedSessionId] = useState(null);
+  const [expandedCounts, setExpandedCounts] = useState([]);
+
+  const loadDriversAndProducts = useCallback(async () => {
     try {
-      const data = await inventoryApi.listSessions(token);
-      setSessions(data);
-      if (!sessionId && data.length > 0) {
-        setSessionId(data[0]._id);
+      const [usersData, productsData] = await Promise.all([usersApi.listUsers(token), productsApi.listProducts(token)]);
+      const driversData = usersData.filter((u) => u.role === 'driver');
+      setDrivers(driversData);
+      setProducts(productsData.filter((p) => p.active));
+      if (driversData.length > 0) {
+        setSelectedDriverId((current) => current || driversData[0]._id);
       }
     } catch (err) {
-      setError(err.message || 'No se pudieron cargar las sesiones');
+      setError(err.message || 'No se pudieron cargar los datos');
     }
-  }, [token, sessionId]);
+  }, [token]);
 
-  const loadSessionDetail = useCallback(async () => {
-    if (!sessionId) {
+  const loadCurrent = useCallback(async () => {
+    if (!selectedDriverId) {
       setLoading(false);
       return;
     }
     setLoading(true);
     setError('');
     try {
-      const [sessionData, expectedData, countsData] = await Promise.all([
-        inventoryApi.getSession(token, sessionId),
-        inventoryApi.getExpectedInventory(token, sessionId),
-        inventoryCountsApi.listCountsBySession(token, sessionId),
-      ]);
-      setSession(sessionData);
-      setExpected(expectedData);
-      setCounts(countsData);
+      setCurrent(await inventoryApi.getCurrentStock(token, selectedDriverId));
     } catch (err) {
-      setError(err.message || 'No se pudo cargar la sesión');
+      setError(err.message || 'No se pudo cargar el inventario');
     } finally {
       setLoading(false);
     }
-  }, [token, sessionId]);
+  }, [token, selectedDriverId]);
 
   useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
+    loadDriversAndProducts();
+  }, [loadDriversAndProducts]);
 
   useEffect(() => {
-    loadSessionDetail();
-  }, [loadSessionDetail]);
+    setMode('idle');
+    loadCurrent();
+  }, [loadCurrent]);
 
-  function startEditStock() {
-    const draft = {};
-    session.initialStock.forEach((s) => {
-      draft[s.product._id] = s.quantity;
+  async function startReponer() {
+    setMode('reponer');
+    setReponerError('');
+    const initial = {};
+    products.forEach((p) => {
+      initial[p._id] = 0;
     });
-    setStockDraft(draft);
-    setEditingStock(true);
-  }
-
-  async function saveStock() {
-    setSavingStock(true);
-    setError('');
+    setReponerQuantities(initial);
+    // Prefill with replenishment suggestions so the manager rarely has to think in raw numbers.
     try {
-      const payload = session.initialStock.map((s) => ({
-        product: s.product._id,
-        quantity: stockDraft[s.product._id] ?? s.quantity,
-      }));
-      await inventoryApi.updateInitialStock(token, session._id, payload);
-      setEditingStock(false);
-      await loadSessionDetail();
+      const suggestions = await replenishmentApi.getSuggestions(token, selectedDriverId);
+      const prefilled = { ...initial };
+      suggestions.rows.forEach((row) => {
+        if (row.suggestedReplenishment > 0) {
+          prefilled[row.product._id] = row.suggestedReplenishment;
+        }
+      });
+      setReponerQuantities(prefilled);
     } catch (err) {
-      setError(err.message || 'No se pudo actualizar el stock inicial');
-    } finally {
-      setSavingStock(false);
+      // Suggestions are a convenience, not a requirement — the form still works with zeros.
     }
   }
 
+  function startConteo() {
+    setMode('conteo');
+    setConteoError('');
+    setConteoResult(null);
+    const initial = {};
+    (current?.stock || []).forEach((s) => {
+      initial[s.product._id] = 0;
+    });
+    setConteoQuantities(initial);
+  }
+
+  async function startHistorial() {
+    setMode('historial');
+    setExpandedSessionId(null);
+    setHistorialLoading(true);
+    try {
+      setHistorial(await inventoryApi.listSessions(token, { driver: selectedDriverId }));
+    } catch (err) {
+      setError(err.message || 'No se pudo cargar el historial');
+    } finally {
+      setHistorialLoading(false);
+    }
+  }
+
+  async function toggleSessionDetail(sessionId) {
+    if (expandedSessionId === sessionId) {
+      setExpandedSessionId(null);
+      return;
+    }
+    setExpandedSessionId(sessionId);
+    try {
+      setExpandedCounts(await inventoryCountsApi.listCountsBySession(token, sessionId));
+    } catch (err) {
+      setExpandedCounts([]);
+    }
+  }
+
+  async function submitReponer() {
+    setReponerError('');
+    const items = products
+      .map((p) => ({ product: p._id, quantity: reponerQuantities[p._id] || 0 }))
+      .filter((i) => i.quantity > 0);
+    if (items.length === 0) {
+      setReponerError('Indica la cantidad a reponer de al menos un producto');
+      return;
+    }
+    setReponerSubmitting(true);
+    try {
+      await inventoryApi.replenish(token, { driver: selectedDriverId, items });
+      setMode('idle');
+      await loadCurrent();
+    } catch (err) {
+      setReponerError(err.message || 'No se pudo registrar la reposición');
+    } finally {
+      setReponerSubmitting(false);
+    }
+  }
+
+  async function submitConteo() {
+    setConteoError('');
+    setConteoSubmitting(true);
+    try {
+      const counts = (current?.stock || []).map((s) => ({
+        product: s.product._id,
+        quantityCounted: conteoQuantities[s.product._id] || 0,
+      }));
+      const result = await inventoryCountsApi.createWeeklyCount(token, {
+        driver: selectedDriverId,
+        counts,
+        weekOf: new Date().toISOString(),
+      });
+      setConteoResult(result);
+    } catch (err) {
+      setConteoError(err.message || 'No se pudo registrar el conteo');
+    } finally {
+      setConteoSubmitting(false);
+    }
+  }
+
+  const selectedDriver = drivers.find((d) => d._id === selectedDriverId);
+  const statusLabel = current?.session ? STATUS_LABELS[current.session.status] || current.session.status : null;
+  const statusColor = current?.session ? STATUS_COLORS[current.session.status] || colors.neutral : colors.neutral;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <ScreenHeader
-        title="Inventario"
-        backHref="/admin"
-        onRefresh={() => {
-          loadSessions();
-          loadSessionDetail();
-        }}
-        refreshing={loading}
-      />
-      <Pressable style={styles.openSessionLink} onPress={() => router.push('/admin/inventory-open')}>
-        <Text style={styles.link}>+ Abrir sesión</Text>
-      </Pressable>
+      <ScreenHeader title="Inventario" backHref="/admin" onRefresh={loadCurrent} refreshing={loading} />
 
-      <Text style={styles.sectionTitle}>Sesiones</Text>
-      <View style={styles.sessionRow}>
-        {sessions.map((s) => (
+      <Text style={styles.sectionTitle}>Chofer</Text>
+      <View style={styles.driverRow}>
+        {drivers.map((d) => (
           <Pressable
-            key={s._id}
-            style={[styles.sessionChip, s._id === sessionId && styles.sessionChipActive]}
-            onPress={() => setSessionId(s._id)}
+            key={d._id}
+            style={[styles.driverChip, d._id === selectedDriverId && styles.driverChipActive]}
+            onPress={() => setSelectedDriverId(d._id)}
           >
-            <Text style={[styles.sessionChipText, s._id === sessionId && styles.sessionChipTextActive]}>
-              {s.vehicle?.name} · {new Date(s.businessDate).toLocaleDateString()} · {SESSION_STATUS_LABELS[s.status]}
-            </Text>
+            <Text style={[styles.driverChipText, d._id === selectedDriverId && styles.driverChipTextActive]}>{d.name}</Text>
           </Pressable>
         ))}
       </View>
-      {sessions.length === 0 && <Text style={styles.empty}>No hay sesiones registradas todavía.</Text>}
+      {drivers.length === 0 && <Text style={styles.empty}>No hay choferes registrados.</Text>}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 20 }} />
-      ) : session ? (
+        <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.primary} />
+      ) : selectedDriver ? (
         <>
-          <View style={styles.detailBox}>
-            <Text style={styles.detailLine}>Vehículo: {session.vehicle?.name}</Text>
-            <Text style={styles.detailLine}>Chofer: {session.driver?.name}</Text>
-            <Text style={styles.detailLine}>Estado: {SESSION_STATUS_LABELS[session.status]}</Text>
-            <Text style={styles.detailLine}>Fecha: {new Date(session.businessDate).toLocaleDateString()}</Text>
-            <Text style={styles.detailLine}>Inicio: {new Date(session.startedAt).toLocaleString()}</Text>
-            {session.endedAt && <Text style={styles.detailLine}>Fin: {new Date(session.endedAt).toLocaleString()}</Text>}
-          </View>
+          <View style={styles.driverCard}>
+            <View style={styles.driverCardHeader}>
+              <Text style={styles.driverName}>{selectedDriver.name}</Text>
+              {statusLabel && (
+                <View style={[styles.statusPill, { backgroundColor: `${statusColor}22` }]}>
+                  <Text style={[styles.statusPillText, { color: statusColor }]}>{statusLabel}</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.driverCardSubtitle}>Inventario actual</Text>
 
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Stock inicial</Text>
-            {session.status === 'OPEN' && !editingStock && (
-              <Pressable onPress={startEditStock}>
-                <Text style={styles.link}>Editar</Text>
-              </Pressable>
+            {(current?.stock || []).length === 0 ? (
+              <Text style={styles.empty}>Este chofer todavía no tiene productos en inventario.</Text>
+            ) : (
+              current.stock.map((s, index) => (
+                <View key={s.product._id} style={[styles.stockRow, index === current.stock.length - 1 && { borderBottomWidth: 0 }]}>
+                  <Text style={styles.stockName}>
+                    {s.product.icon} {s.product.name}
+                  </Text>
+                  <Text style={styles.stockQty}>{s.quantityExpected}</Text>
+                </View>
+              ))
             )}
           </View>
 
-          {editingStock ? (
-            <View>
+          <View style={styles.actionsRow}>
+            <Pressable style={styles.actionButton} onPress={startReponer}>
+              <Text style={styles.actionButtonText}>Reponer</Text>
+            </Pressable>
+            <Pressable style={styles.actionButton} onPress={startConteo}>
+              <Text style={styles.actionButtonText}>Hacer conteo</Text>
+            </Pressable>
+            <Pressable style={styles.actionButton} onPress={startHistorial}>
+              <Text style={styles.actionButtonText}>Historial</Text>
+            </Pressable>
+          </View>
+
+          {mode === 'reponer' && (
+            <View style={styles.formBox}>
+              <Text style={styles.sectionTitle}>Reponer productos</Text>
+              <Text style={styles.formHint}>Las cantidades sugeridas ya están precargadas — ajústalas si hace falta.</Text>
               <QuantityStepper
-                items={session.initialStock.map((s) => ({ product: s.product }))}
-                quantities={stockDraft}
-                onChangeQuantity={(id, qty) => setStockDraft((prev) => ({ ...prev, [id]: qty }))}
+                items={products.map((p) => ({ product: p }))}
+                quantities={reponerQuantities}
+                onChangeQuantity={(id, qty) => setReponerQuantities((prev) => ({ ...prev, [id]: qty }))}
               />
-              <View style={styles.actionsRow}>
-                <Pressable style={styles.button} onPress={saveStock} disabled={savingStock}>
-                  {savingStock ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Guardar</Text>}
+              {reponerError ? <Text style={styles.error}>{reponerError}</Text> : null}
+              <View style={styles.formActions}>
+                <Pressable style={styles.button} onPress={submitReponer} disabled={reponerSubmitting}>
+                  {reponerSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Confirmar reposición</Text>}
                 </Pressable>
-                <Pressable style={styles.buttonSecondary} onPress={() => setEditingStock(false)}>
+                <Pressable style={styles.buttonSecondary} onPress={() => setMode('idle')}>
                   <Text style={styles.buttonSecondaryText}>Cancelar</Text>
                 </Pressable>
               </View>
             </View>
-          ) : (
-            session.initialStock.map((s) => (
-              <View key={s.product._id} style={styles.row}>
-                <Text style={styles.rowName}>
-                  {s.product.icon} {s.product.name}
-                </Text>
-                <Text style={styles.rowValue}>{s.quantity}</Text>
-              </View>
-            ))
           )}
 
-          <Text style={styles.sectionTitle}>Inventario esperado</Text>
-          {expected.map((e) => (
-            <View key={e.product._id} style={styles.row}>
-              <Text style={styles.rowName}>
-                {e.product.icon} {e.product.name}
-              </Text>
-              <Text style={styles.rowValue}>{e.quantityExpected}</Text>
-            </View>
-          ))}
+          {mode === 'conteo' && (
+            <View style={styles.formBox}>
+              <Text style={styles.sectionTitle}>Conteo — cantidad física</Text>
+              {(current?.stock || []).length === 0 ? (
+                <Text style={styles.empty}>Este chofer no tiene productos en inventario para contar.</Text>
+              ) : (
+                <QuantityStepper
+                  items={current.stock.map((s) => ({ product: s.product, note: `Esperado: ${s.quantityExpected}` }))}
+                  quantities={conteoQuantities}
+                  onChangeQuantity={(id, qty) => setConteoQuantities((prev) => ({ ...prev, [id]: qty }))}
+                />
+              )}
+              {conteoError ? <Text style={styles.error}>{conteoError}</Text> : null}
+              {!conteoResult && (current?.stock || []).length > 0 && (
+                <View style={styles.formActions}>
+                  <Pressable style={styles.button} onPress={submitConteo} disabled={conteoSubmitting}>
+                    {conteoSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Registrar conteo</Text>}
+                  </Pressable>
+                  <Pressable style={styles.buttonSecondary} onPress={() => setMode('idle')}>
+                    <Text style={styles.buttonSecondaryText}>Cancelar</Text>
+                  </Pressable>
+                </View>
+              )}
 
-          <Text style={styles.sectionTitle}>Conteos registrados</Text>
-          {counts.length === 0 ? (
-            <Text style={styles.empty}>Sin conteos todavía.</Text>
-          ) : (
-            counts.map((c) => (
-              <View key={c._id} style={styles.countCard}>
-                <Text style={styles.countHeader}>
-                  {COUNT_TYPE_LABELS[c.type]} — {c.driver?.name} — {new Date(c.createdAt).toLocaleString()}
-                </Text>
-                {c.differences.map((d) => (
-                  <View key={d.product._id} style={styles.diffRow}>
-                    <Text style={styles.diffName}>{d.product.name}</Text>
-                    <Text style={styles.diffValue}>
-                      contado {d.quantityCounted} / esperado {d.quantityExpected} ({d.difference >= 0 ? '+' : ''}
-                      {d.difference})
-                    </Text>
+              {conteoResult && (
+                <View style={styles.resultBox}>
+                  <Text style={styles.resultTitle}>Diferencias</Text>
+                  {conteoResult.differences.map((d) => (
+                    <View key={d.product._id} style={styles.diffRow}>
+                      <Text style={styles.diffName}>{d.product.name}</Text>
+                      <Text style={styles.diffValue}>
+                        contado {d.quantityCounted} / esperado {d.quantityExpected} ({d.difference >= 0 ? '+' : ''}
+                        {d.difference})
+                      </Text>
+                    </View>
+                  ))}
+                  <Pressable style={[styles.buttonSecondary, { marginTop: spacing.md }]} onPress={() => setMode('idle')}>
+                    <Text style={styles.buttonSecondaryText}>Cerrar</Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          )}
+
+          {mode === 'historial' && (
+            <View style={styles.formBox}>
+              <Text style={styles.sectionTitle}>Historial</Text>
+              {historialLoading ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : historial.length === 0 ? (
+                <Text style={styles.empty}>Sin historial todavía.</Text>
+              ) : (
+                historial.map((s) => (
+                  <View key={s._id}>
+                    <Pressable style={styles.historyRow} onPress={() => toggleSessionDetail(s._id)}>
+                      <View>
+                        <Text style={styles.historyDate}>{new Date(s.businessDate).toLocaleDateString()}</Text>
+                        {s.vehicle?.name && <Text style={styles.historyVehicle}>{s.vehicle.name}</Text>}
+                      </View>
+                      <Text style={[styles.historyStatus, { color: STATUS_COLORS[s.status] || colors.neutral }]}>
+                        {SESSION_STATUS_LABELS[s.status] || s.status}
+                      </Text>
+                    </Pressable>
+
+                    {expandedSessionId === s._id && (
+                      <View style={styles.historyDetail}>
+                        {expandedCounts.length === 0 ? (
+                          <Text style={styles.empty}>Sin conteos registrados.</Text>
+                        ) : (
+                          expandedCounts.map((c) => (
+                            <View key={c._id} style={styles.countCard}>
+                              <Text style={styles.countHeader}>
+                                {COUNT_TYPE_LABELS[c.type]} — {new Date(c.createdAt).toLocaleString()}
+                              </Text>
+                              {c.differences.map((d) => (
+                                <View key={d.product._id} style={styles.diffRow}>
+                                  <Text style={styles.diffName}>{d.product.name}</Text>
+                                  <Text style={styles.diffValue}>
+                                    contado {d.quantityCounted} / esperado {d.quantityExpected} ({d.difference >= 0 ? '+' : ''}
+                                    {d.difference})
+                                  </Text>
+                                </View>
+                              ))}
+                            </View>
+                          ))
+                        )}
+                      </View>
+                    )}
                   </View>
-                ))}
-              </View>
-            ))
+                ))
+              )}
+              <Pressable style={[styles.buttonSecondary, { marginTop: spacing.md }]} onPress={() => setMode('idle')}>
+                <Text style={styles.buttonSecondaryText}>Cerrar</Text>
+              </Pressable>
+            </View>
           )}
         </>
-      ) : (
-        <Text style={styles.empty}>
-          {sessions.length === 0
-            ? 'Todavía no hay sesiones de inventario. Abre una para empezar.'
-            : 'Selecciona una sesión arriba para ver el detalle.'}
-        </Text>
-      )}
+      ) : null}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 20, paddingBottom: 60 },
-  openSessionLink: { alignSelf: 'flex-start', marginBottom: 16 },
-  link: { color: '#2563eb', fontWeight: '600' },
-  sectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8 },
-  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 },
-  sessionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  sessionChip: { borderWidth: 1, borderColor: '#2563eb', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 },
-  sessionChipActive: { backgroundColor: '#2563eb' },
-  sessionChipText: { color: '#2563eb', fontSize: 12, fontWeight: '600' },
-  sessionChipTextActive: { color: '#fff' },
-  empty: { color: '#666', marginTop: 8 },
-  error: { color: '#dc2626', marginTop: 8 },
-  detailBox: { marginTop: 16, backgroundColor: '#f5f5f5', borderRadius: 10, padding: 12 },
-  detailLine: { fontSize: 13, color: '#333', marginBottom: 2 },
-  row: {
+  container: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
+
+  sectionTitle: { ...typography.headline, color: colors.textPrimary, marginBottom: spacing.sm },
+  driverRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  driverChip: { borderWidth: 1, borderColor: colors.primary, borderRadius: radii.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  driverChipActive: { backgroundColor: colors.primary },
+  driverChipText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
+  driverChipTextActive: { color: '#fff' },
+  empty: { ...typography.callout, color: colors.textSecondary, marginTop: spacing.sm },
+  error: { color: colors.danger, marginTop: spacing.sm },
+
+  driverCard: {
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    ...softShadow,
+  },
+  driverCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  driverName: { ...typography.title, color: colors.textPrimary },
+  driverCardSubtitle: { ...typography.subhead, color: colors.textSecondary, marginTop: spacing.xs, marginBottom: spacing.sm },
+  statusPill: { borderRadius: radii.full, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  statusPillText: { fontSize: 12, fontWeight: '700' },
+
+  stockRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
-  rowName: { fontSize: 14, color: '#333' },
-  rowValue: { fontSize: 14, fontWeight: '700' },
-  actionsRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  button: { flex: 1, backgroundColor: '#2563eb', borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
+  stockName: { ...typography.body, color: colors.textPrimary },
+  stockQty: { ...typography.headline, color: colors.textPrimary },
+
+  actionsRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  actionButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radii.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  actionButtonText: { color: colors.primary, fontWeight: '600', fontSize: 14 },
+
+  formBox: { marginTop: spacing.xl, padding: spacing.md, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border },
+  formHint: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.sm },
+  formActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  button: { flex: 1, backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: spacing.md, alignItems: 'center' },
   buttonText: { color: '#fff', fontWeight: '600' },
-  buttonSecondary: { flex: 1, borderWidth: 1, borderColor: '#2563eb', borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
-  buttonSecondaryText: { color: '#2563eb', fontWeight: '600' },
-  countCard: { borderWidth: 1, borderColor: '#e5e5e5', borderRadius: 10, padding: 12, marginBottom: 10 },
-  countHeader: { fontSize: 13, fontWeight: '700', marginBottom: 6 },
-  diffRow: { marginBottom: 4 },
-  diffName: { fontSize: 13, fontWeight: '600' },
-  diffValue: { fontSize: 12, color: '#666' },
+  buttonSecondary: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, paddingVertical: spacing.md, alignItems: 'center' },
+  buttonSecondaryText: { color: colors.textSecondary, fontWeight: '600' },
+
+  resultBox: { marginTop: spacing.md, padding: spacing.md, backgroundColor: colors.background, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border },
+  resultTitle: { ...typography.subhead, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
+  diffRow: { marginBottom: spacing.xs },
+  diffName: { ...typography.callout, fontWeight: '600', color: colors.textPrimary },
+  diffValue: { ...typography.caption, color: colors.textSecondary },
+
+  historyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  historyDate: { ...typography.body, color: colors.textPrimary },
+  historyVehicle: { ...typography.caption, color: colors.textSecondary },
+  historyStatus: { fontSize: 13, fontWeight: '700' },
+  historyDetail: { paddingVertical: spacing.sm, paddingLeft: spacing.sm },
+  countCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: spacing.sm, marginBottom: spacing.sm },
+  countHeader: { ...typography.caption, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.xs },
 });

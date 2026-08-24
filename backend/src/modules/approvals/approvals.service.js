@@ -12,8 +12,13 @@ const EDITABLE_STATUSES = [SALE_STATUSES.PENDING, SALE_STATUSES.INCIDENT];
 
 // Once a session leaves OPEN (closing submitted or fully finalized), the financial/inventory
 // state it represents is frozen: no sale belonging to it can be modified until a manager
-// administratively reopens the closing (session goes back to OPEN).
+// administratively reopens the closing (session goes back to OPEN). A sale with no
+// inventorySession at all (the common case now — selling never requires one) has nothing to
+// freeze, so it's always editable from this check's perspective.
 async function assertSessionEditable(sale) {
+  if (!sale.inventorySession) {
+    return;
+  }
   const session = await inventoryService.loadSessionOrFail(sale.inventorySession);
   if (session.status !== SESSION_STATUSES.OPEN) {
     throw new HttpError(

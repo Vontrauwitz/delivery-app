@@ -18,7 +18,7 @@ async function create(req, res, next) {
 async function list(req, res, next) {
   try {
     const filter = {};
-    if (req.query.vehicle) filter.vehicle = req.query.vehicle;
+    if (req.query.driver) filter.driver = req.query.driver;
     if (req.query.status) filter.status = req.query.status;
     const closings = await service.listClosings(filter);
     res.json(closings);

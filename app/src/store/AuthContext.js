@@ -27,8 +27,9 @@ export function AuthProvider({ children }) {
   // separately — that's exactly what let a network hiccup get treated as "logged out" before.
   //   RESTORING          — first check of the stored token, still in flight.
   //   AUTHENTICATED      — confirmed valid: user is set, safe to render protected screens.
-  //   TEMPORARILY_OFFLINE— couldn't confirm (no backend response), token still held, NOT a logout.
-  //   UNAUTHENTICATED    — confirmed invalid (no token, or a real 401/403): show the login screen.
+  //   TEMPORARILY_OFFLINE— couldn't confirm (no backend response, or a 5xx), token still held, NOT a logout.
+  //   UNAUTHENTICATED    — confirmed invalid (no token, a 401/403, or a 404 from GET /me for a
+  //                        stale token whose user no longer exists): show the login screen.
   const status = isLoading
     ? 'RESTORING'
     : user
@@ -82,12 +83,19 @@ export function AuthProvider({ children }) {
       setUser(me);
       setAuthError('');
     } catch (err) {
-      // A confirmed rejection from the backend (expired/invalid token) is the ONLY case that
-      // means the session itself is invalid — that's when we sign out. Anything else (network
-      // failure has no `.status` at all; a momentary 5xx has one but isn't 401/403) is not proof
-      // of that, and must never delete a token that may still be perfectly valid once the
-      // backend is reachable again.
-      if (err.status === 401 || err.status === 403) {
+      // A confirmed rejection of THIS token by the backend means the session itself is invalid
+      // — that's when we sign out:
+      //   401/403 — the token itself is rejected (missing, malformed, expired).
+      //   404     — the token is well-formed and was accepted by the auth middleware, but
+      //             GET /me found no matching user. That only happens for a stale JWT whose
+      //             user record is gone (e.g. a dev DB reset/reseed while the browser still
+      //             held the old token) — genuinely invalid, not a connectivity problem. This
+      //             404 handling is specific to session restoration (GET /me); it does not
+      //             generalize to how the rest of the app treats a 404.
+      // Anything else — no `.status` at all (network failure) or a 5xx — is not proof the
+      // session is invalid, and must never delete a token that may still be perfectly valid
+      // once the backend is reachable again.
+      if (err.status === 401 || err.status === 403 || err.status === 404) {
         await AsyncStorage.removeItem(TOKEN_KEY);
         setToken(null);
         setUser(null);

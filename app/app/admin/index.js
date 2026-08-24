@@ -17,6 +17,7 @@ const PRIMARY = [
 
 const SECONDARY = [
   { href: '/admin/schedule', label: 'Programación' },
+  { href: '/admin/products', label: 'Productos' },
   { href: '/admin/promotions', label: 'Promociones' },
   { href: '/admin/weekly-report', label: 'Reportes' },
   { href: '/admin/settings', label: 'Configuración' },

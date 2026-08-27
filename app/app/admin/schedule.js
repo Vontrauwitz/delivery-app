@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TextInput, Pressable, StyleSheet, ActivityIndicator, Modal } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/modules/auth/useAuth';
 import * as usersApi from '../../src/modules/users/api';
@@ -115,17 +115,20 @@ function formatExpectedRange(startTime, durationMinutes) {
   return `${startTime}–${pad(endH)}:${pad(endM)}${suffix}`;
 }
 
-// Top header for the SUMMARY view only — title + a single subtle icon button back to the
-// dashboard. No admin/_layout tab bar exists, so this is currently the only way back to /admin
-// from Programación; kept small/icon-only so it never competes with the driver picker or actions
-// below it.
-function SummaryHeader({ onHome }) {
+// Top header for the SUMMARY view — same "← back row, then title" shape as SubviewHeader below,
+// but the back destination depends on how Programación was entered rather than always being the
+// dashboard: Driver detail > Horario returns to that driver; Configuración > Horarios returns to
+// Configuración. That context is carried entirely in the URL (see the `from`/`driver` params
+// read in ScheduleScreen), never inferred from navigation history — so it resolves the same way
+// on Android, iOS, and web, and never depends on the hardware back button.
+function SummaryHeader({ backLabel, onBack }) {
   return (
-    <View style={styles.summaryHeaderRow}>
-      <Text style={styles.summaryTitle}>Programación</Text>
-      <Pressable style={styles.iconButton} onPress={onHome} hitSlop={8}>
-        <Ionicons name="home-outline" size={18} color={neoColors.ink} />
+    <View style={styles.summaryHeader}>
+      <Pressable style={styles.backRow} onPress={onBack} hitSlop={8}>
+        <Ionicons name="chevron-back" size={18} color={neoColors.primary} />
+        <Text style={styles.backRowText}>{backLabel}</Text>
       </Pressable>
+      <Text style={styles.summaryTitle}>Programación</Text>
     </View>
   );
 }
@@ -545,6 +548,13 @@ function ComparisonCard({ item, onDelete }) {
 export default function ScheduleScreen() {
   const { token } = useAuth();
   const router = useRouter();
+  // Optional deep-link from Driver detail ("Horario") — e.g. /admin/schedule?driver=<id>&from=driver.
+  // `linkedDriverId` is only ever consulted for the very first driver selection (see load()
+  // below); switching drivers afterward through the picker works exactly as before. `from`
+  // ('driver' | 'settings') decides where the header's back action returns to — see
+  // SummaryHeader above.
+  const { driver: linkedDriverId, from: cameFrom } = useLocalSearchParams();
+  const cameFromDriver = cameFrom === 'driver' && !!linkedDriverId;
   const [drivers, setDrivers] = useState([]);
   const [comparisons, setComparisons] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -581,7 +591,8 @@ export default function ScheduleScreen() {
       const driverUsers = users.filter((u) => u.role === 'driver');
       setDrivers(driverUsers);
       if (driverUsers.length > 0) {
-        setSelectedDriverId((current) => current || driverUsers[0]._id);
+        const linked = driverUsers.some((d) => d._id === linkedDriverId) ? linkedDriverId : null;
+        setSelectedDriverId((current) => current || linked || driverUsers[0]._id);
       }
       setComparisons(comparisonsData);
     } catch (err) {
@@ -589,7 +600,7 @@ export default function ScheduleScreen() {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, linkedDriverId]);
 
   useEffect(() => {
     load();
@@ -716,13 +727,19 @@ export default function ScheduleScreen() {
     }
   }
 
+  // Resolved once per render from the URL context alone (never from navigation history), so it
+  // works identically regardless of platform or how the screen was actually reached in practice.
+  const linkedDriver = drivers.find((d) => d._id === linkedDriverId);
+  const backHref = cameFromDriver ? `/admin/drivers/${linkedDriverId}` : '/admin/settings';
+  const backLabel = cameFromDriver ? linkedDriver?.name || 'Chofer' : 'Configuración';
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* SUMMARY-only chrome: a subview shows nothing above its own SubviewHeader, so there is
           never a second "Programación" title or a driver picker competing with "← Programación". */}
       {activeView === 'SUMMARY' && (
         <>
-          <SummaryHeader onHome={() => router.push('/admin')} />
+          <SummaryHeader backLabel={backLabel} onBack={() => router.replace(backHref)} />
 
           {loadError ? <Text style={styles.error}>{loadError}</Text> : null}
 
@@ -875,18 +892,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: neoColors.background },
   content: { padding: neoSpacing.lg, paddingBottom: neoSpacing.xxl },
 
-  summaryHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: neoSpacing.sm },
+  summaryHeader: { marginBottom: neoSpacing.lg },
   summaryTitle: { ...neoTypography.title, color: neoColors.ink },
-  iconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: neoRadii.md,
-    borderWidth: 2,
-    borderColor: neoColors.ink,
-    backgroundColor: neoColors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
   subviewHeader: { marginBottom: neoSpacing.lg },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', marginBottom: neoSpacing.md },

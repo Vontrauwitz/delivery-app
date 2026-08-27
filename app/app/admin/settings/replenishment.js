@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TextInput, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
-import { useAuth } from '../../src/modules/auth/useAuth';
-import * as replenishmentApi from '../../src/modules/replenishment/api';
-import ScreenHeader from '../../src/shared/ScreenHeader';
-import { colors, spacing, radii, typography, softShadow } from '../../src/shared/theme';
+import { useAuth } from '../../../src/modules/auth/useAuth';
+import * as replenishmentApi from '../../../src/modules/replenishment/api';
+import ScreenHeader from '../../../src/shared/ScreenHeader';
+import { colors, spacing, radii, typography, softShadow } from '../../../src/shared/theme';
 
 // Per-product replenishment settings (coverage days, safety stock) — the one genuine "config"
 // concept left after Reabastecimiento's day-to-day suggestions moved into Inventario > Reponer.
-export default function SettingsScreen() {
+export default function ReplenishmentSettingsScreen() {
   const { token } = useAuth();
 
   const [rows, setRows] = useState([]);
@@ -81,7 +81,7 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <ScreenHeader title="Configuración" backHref="/admin" onRefresh={load} refreshing={loading} />
+      <ScreenHeader title="Reabastecimiento" backHref="/admin/settings" onRefresh={load} refreshing={loading} />
 
       <Text style={styles.sectionTitle}>Reabastecimiento por producto</Text>
       <Text style={styles.sectionHint}>

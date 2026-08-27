@@ -40,6 +40,11 @@ async function request(path, { method = 'GET', body, token } = {}) {
     // (offline, backend down) throws before this point and has no `.status` — see auth API docs.
     const error = new Error((data && data.error) || 'Error de red');
     error.status = response.status;
+    // Structured extra data for responses the caller needs to branch on programmatically (e.g.
+    // a blocked-delete conflict's machine-readable code) rather than string-matching `message` —
+    // see backend HttpError. Undefined for every response that never set it, so existing callers
+    // that only ever read `.message`/`.status` are unaffected.
+    error.details = data && data.details;
     throw error;
   }
 

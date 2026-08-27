@@ -6,7 +6,7 @@ function errorHandler(err, req, res, next) {
     console.error(err);
   }
 
-  res.status(statusCode).json({ error: message });
+  res.status(statusCode).json({ error: message, ...(err.details ? { details: err.details } : {}) });
 }
 
 module.exports = errorHandler;

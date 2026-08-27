@@ -17,7 +17,6 @@ import { neoColors, neoSpacing, neoRadii, neoTypography } from '../../src/shared
 const CONTENT_MAX_WIDTH = 1180;
 
 const SECONDARY = [
-  { href: '/admin/schedule', label: 'Programación' },
   { href: '/admin/products', label: 'Productos' },
   { href: '/admin/promotions', label: 'Promociones' },
   { href: '/admin/weekly-report', label: 'Reportes' },
@@ -279,7 +278,10 @@ export default function AdminHome() {
       key: `notstart-${c.scheduledShift._id}`,
       color: neoColors.warning,
       text: `${c.scheduledShift.driver.name}: turno programado hoy, todavía no lo inicia`,
-      href: '/admin/schedule',
+      // Programación is no longer top-level nav — this is a contextual deep link straight to
+      // the relevant driver's schedule, with back-context so it returns to Configuración (its
+      // new home) rather than nowhere in particular.
+      href: `/admin/schedule?driver=${c.scheduledShift.driver._id}&from=settings`,
     })),
   ].filter(Boolean);
 

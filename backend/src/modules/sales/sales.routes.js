@@ -9,6 +9,7 @@ const router = express.Router();
 
 router.post('/', auth, requireRole([ROLES.DRIVER]), validateCreateSale, controller.create);
 router.get('/mine', auth, requireRole([ROLES.DRIVER]), controller.listMine);
+router.get('/stats', auth, requireRole([ROLES.MANAGER, ROLES.ADMIN]), controller.stats);
 router.get('/:id', auth, controller.getById);
 
 module.exports = router;

@@ -29,6 +29,14 @@ async function seed() {
   const manager = await ensureUser(managerData);
   const driver = await ensureUser(driverData);
 
+  // Supplementary demo drivers (Driver Demo 1/2/3, etc.) — anything in DEMO_USERS beyond the
+  // fixed [manager, driver] pair. Same ensureUser matched-by-email idempotency as above: safe to
+  // re-run, never duplicates, never touches one a manager has since edited by hand.
+  const extraDrivers = [];
+  for (const data of DEMO_USERS.slice(2)) {
+    extraDrivers.push(await ensureUser(data));
+  }
+
   let productsCreated = 0;
   let productsAdopted = 0;
   const productsBySeedKey = {};

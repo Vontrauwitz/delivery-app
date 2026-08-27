@@ -7,8 +7,76 @@ import { useAutoLocation } from '../../src/modules/locations/useAutoLocation';
 import * as messagingApi from '../../src/modules/messaging/api';
 import * as dispatchApi from '../../src/modules/dispatch/api';
 import * as inventoryApi from '../../src/modules/inventory/api';
+import * as authApi from '../../src/modules/auth/api';
+import * as driverScheduleApi from '../../src/modules/driverSchedule/api';
 import { formatDurationMs } from '../../src/shared/duration';
+import { WEEKDAY_LETTERS } from '../../src/shared/dateKey';
 import { colors, spacing, radii, typography, softShadow } from '../../src/shared/theme';
+
+function formatShiftRange(startTime, durationMinutes) {
+  const [h, m] = startTime.split(':').map(Number);
+  const endTotal = h * 60 + m + Number(durationMinutes);
+  const endH = Math.floor((endTotal / 60) % 24);
+  const endM = endTotal % 60;
+  const dayOverflow = Math.floor(endTotal / (24 * 60));
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${startTime}–${pad(endH)}:${pad(endM)}${dayOverflow > 0 ? ` (+${dayOverflow}d)` : ''}`;
+}
+
+// Read-only for the driver — no edit controls here at all, matching the manager-only ownership
+// of both the recurring default schedule and any date exceptions (see app/admin/schedule.js).
+function ScheduleSummary({ token }) {
+  const [defaultShift, setDefaultShift] = useState(null);
+  const [todayStatus, setTodayStatus] = useState(null);
+
+  useEffect(() => {
+    authApi.getMe(token).then((me) => setDefaultShift(me.defaultShift)).catch(() => {});
+    driverScheduleApi.getMyStatus(token).then(setTodayStatus).catch(() => {});
+  }, [token]);
+
+  if (!defaultShift?.enabled) return null;
+
+  const expected = todayStatus?.expected;
+  // Only call out "today" separately when it actually deviates from the normal recurring
+  // pattern (an exception or an explicit ScheduledShift) — an ordinary DEFAULT day needs no
+  // extra emphasis beyond the weekly summary already shown below.
+  const isOverridden = expected && expected.source !== 'DEFAULT';
+
+  return (
+    <View style={styles.scheduleCard}>
+      <Text style={styles.scheduleTitle}>Tu horario habitual</Text>
+      <View style={styles.dayRow}>
+        {WEEKDAY_LETTERS.map((letter, idx) => {
+          const isoDay = idx + 1;
+          const active = (defaultShift.activeDays || []).includes(isoDay);
+          return (
+            <View key={isoDay} style={[styles.dayDot, active && styles.dayDotActive]}>
+              <Text style={[styles.dayDotText, active && styles.dayDotTextActive]}>{letter}</Text>
+            </View>
+          );
+        })}
+      </View>
+      {defaultShift.startTime && defaultShift.durationMinutes ? (
+        <Text style={styles.scheduleRange}>{formatShiftRange(defaultShift.startTime, defaultShift.durationMinutes)}</Text>
+      ) : null}
+
+      {isOverridden && (
+        <View style={styles.scheduleTodayBox}>
+          <Text style={styles.scheduleTodayLabel}>Hoy es distinto</Text>
+          {expected.isWorkingDay && expected.expectedStart && expected.expectedEnd ? (
+            <Text style={styles.scheduleTodayText}>
+              {new Date(expected.expectedStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}–
+              {new Date(expected.expectedEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          ) : (
+            <Text style={styles.scheduleTodayText}>{expected.isWorkingDay ? 'Trabajas hoy' : 'Descanso hoy'}</Text>
+          )}
+          {!!expected.reason && <Text style={styles.scheduleTodayReason}>{expected.reason}</Text>}
+        </View>
+      )}
+    </View>
+  );
+}
 
 // Below this many units for any one product, the driver's inventory reads "bajo" — a simple,
 // visible-at-a-glance heuristic, not a forecast.
@@ -132,6 +200,8 @@ export default function DriverHome() {
 
         <StatusChip label="Ubicación" value={LOCATION_LABELS[location.status]} color={LOCATION_COLORS[location.status]} />
 
+        <ScheduleSummary token={token} />
+
         <Pressable onPress={signOut} style={styles.signOutLink}>
           <Text style={styles.signOutLinkText}>Cerrar sesión</Text>
         </Pressable>
@@ -144,6 +214,8 @@ export default function DriverHome() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.greeting}>Hola, {user?.name}</Text>
+
+      <ScheduleSummary token={token} />
 
       <View style={styles.statusStrip}>
         <StatusChip label="Turno" value={formatDurationMs(elapsedMs)} color={colors.success} />
@@ -287,4 +359,38 @@ const styles = StyleSheet.create({
 
   signOutLink: { alignItems: 'center', marginTop: spacing.xxl },
   signOutLinkText: { color: colors.textSecondary, fontSize: 13 },
+
+  scheduleCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    backgroundColor: colors.surface,
+  },
+  scheduleTitle: { ...typography.subhead, color: colors.textSecondary, marginBottom: spacing.xs },
+  scheduleRange: { ...typography.headline, color: colors.textPrimary, marginTop: spacing.xs },
+  dayRow: { flexDirection: 'row', gap: spacing.xs },
+  dayDot: {
+    width: 28,
+    height: 28,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  dayDotActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  dayDotText: { fontSize: 12, fontWeight: '700', color: colors.textTertiary },
+  dayDotTextActive: { color: '#fff' },
+  scheduleTodayBox: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  scheduleTodayLabel: { ...typography.caption, color: colors.warning, fontWeight: '700' },
+  scheduleTodayText: { ...typography.headline, color: colors.textPrimary, marginTop: 2 },
+  scheduleTodayReason: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
 });

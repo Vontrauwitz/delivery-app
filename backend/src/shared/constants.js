@@ -102,6 +102,21 @@ const DISPATCH_STATUSES = {
   CANCELLED: 'CANCELLED',
 };
 
+// WORK: adds a working day using the driver's normal default-shift hours (no custom times).
+// REST: marks a normally-working day as off.
+// CUSTOM: working day with an explicit startTime and/or durationMinutes override, distinct from
+// WORK so "normal day added" and "different hours on this date" never overlap in the data.
+const SCHEDULE_EXCEPTION_TYPES = {
+  WORK: 'WORK',
+  REST: 'REST',
+  CUSTOM: 'CUSTOM',
+};
+
+// A ping/request older than this is no longer "recent" for the alert-condition layer. Same
+// reasoning as LOCATION_STALE_THRESHOLD_MS just below: never stored as a boolean, always
+// computed at read time against "now".
+const APP_CONTACT_STALE_THRESHOLD_MS = 20 * 60 * 1000;
+
 module.exports = {
   ROLES,
   PAYMENT_METHODS,
@@ -120,4 +135,6 @@ module.exports = {
   DISPATCH_STATUSES,
   SCHEDULE_MATCH_TOLERANCE_MS,
   ACCOUNTING_PERIOD_STATUSES,
+  SCHEDULE_EXCEPTION_TYPES,
+  APP_CONTACT_STALE_THRESHOLD_MS,
 };

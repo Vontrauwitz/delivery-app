@@ -35,7 +35,9 @@
         {
           "locationWhenInUsePermission": "Delivery App usa tu ubicación para que el manager pueda ver dónde estás mientras tienes un turno activo."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-font"
     ],
     "extra": {
       "router": {},

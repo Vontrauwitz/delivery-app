@@ -59,6 +59,24 @@ async function listShiftsByDriver(driverId, limit = 20) {
   return shifts.map(withDuration);
 }
 
+// The one WorkShift that represents "today" for this driver, for live schedule-status purposes:
+// their currently OPEN shift if they have one (regardless of which calendar date it started —
+// only one can ever be open per driver, so this is unambiguous), otherwise the most recent
+// CLOSED shift that started on this calendar date, otherwise null (nothing happened today).
+// Read-only, no side effects — never touches matching/audit, unlike startShift/endShift.
+async function findShiftForDate(driverId, date) {
+  const open = await getOpenShiftForDriver(driverId);
+  if (open) return open;
+
+  const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  return WorkShift.findOne({
+    driver: driverId,
+    status: WORK_SHIFT_STATUSES.CLOSED,
+    startedAt: { $gte: dayStart, $lt: dayEnd },
+  }).sort({ startedAt: -1 });
+}
+
 async function listShifts(filter = {}) {
   const shifts = await WorkShift.find(filter)
     .sort({ startedAt: -1 })
@@ -224,6 +242,7 @@ module.exports = {
   getShiftById,
   listShiftsByDriver,
   listShifts,
+  findShiftForDate,
   startShift,
   endShift,
   adminUpdateShift,

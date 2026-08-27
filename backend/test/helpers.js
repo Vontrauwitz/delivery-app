@@ -103,6 +103,7 @@ async function resetAndSeed() {
   await mongoose.connection.db.collection('locationpings').deleteMany({});
   await mongoose.connection.db.collection('messages').deleteMany({});
   await mongoose.connection.db.collection('dispatches').deleteMany({});
+  await mongoose.connection.db.collection('driverscheduleexceptions').deleteMany({});
   await mongoose.disconnect();
 
   // Explicit env, not ambient inheritance — dbReset.js must target the exact same

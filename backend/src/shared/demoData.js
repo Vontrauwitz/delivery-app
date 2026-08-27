@@ -20,10 +20,18 @@ const PRODUCTS = [
   { seedKey: 'corona', name: 'Corona', icon: '👑', basePrice: 100, order: 10 },
 ];
 
-// Fixed order: [manager, driver] — both scripts destructure by position.
+// Fixed order for the first two entries: [manager, driver] — both seed.js and dbReset.js
+// destructure those by position (`const [managerData, driverData] = DEMO_USERS`), and dbReset's
+// minimal rebuild only ever recreates those two. Everything from index 2 onward is a
+// supplementary demo driver, safe-seeded (see seed.js) but intentionally NOT part of db:reset's
+// destructive rebuild — appending here is always safe since positional destructuring only reads
+// the first two slots regardless of array length.
 const DEMO_USERS = [
   { name: 'Manager Demo', email: 'manager@delivery.test', password: '123456', role: ROLES.MANAGER },
   { name: 'Driver Demo', email: 'driver@delivery.test', password: '123456', role: ROLES.DRIVER },
+  { name: 'Driver Demo 1', email: 'driver1@delivery.test', password: '123456', role: ROLES.DRIVER },
+  { name: 'Driver Demo 2', email: 'driver2@delivery.test', password: '123456', role: ROLES.DRIVER },
+  { name: 'Driver Demo 3', email: 'driver3@delivery.test', password: '123456', role: ROLES.DRIVER },
 ];
 
 const DEMO_VEHICLE_NAME = 'Carrito 1';

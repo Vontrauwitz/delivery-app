@@ -67,6 +67,17 @@ async function listScheduledShifts(filter = {}) {
     .populate('workShift');
 }
 
+// The one ScheduledShift that explicitly covers this exact calendar date, if any — the top of
+// the shared/scheduleResolution.js priority chain. Read-only; does not touch matching.
+async function findForDriverAndDate(driverId, date) {
+  const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  return ScheduledShift.findOne({
+    driver: driverId,
+    scheduledStart: { $gte: dayStart, $lt: dayEnd },
+  }).sort({ scheduledStart: 1 });
+}
+
 // Called once, right when a WorkShift starts. Finds the closest unmatched ScheduledShift for
 // this driver within SCHEDULE_MATCH_TOLERANCE_MS and persists the match. Never called again for
 // this WorkShift or this ScheduledShift after that — no re-matching, no splitting, no effect on
@@ -125,6 +136,7 @@ module.exports = {
   updateScheduledShift,
   deleteScheduledShift,
   listScheduledShifts,
+  findForDriverAndDate,
   matchWorkShiftToSchedule,
   listComparisons,
 };

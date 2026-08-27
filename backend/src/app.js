@@ -13,6 +13,7 @@ const inventoryCountsRoutes = require('./modules/inventoryCounts/inventoryCounts
 const closingRoutes = require('./modules/closing/closing.routes');
 const workShiftsRoutes = require('./modules/workShifts/workShifts.routes');
 const scheduledShiftsRoutes = require('./modules/scheduledShifts/scheduledShifts.routes');
+const driverScheduleRoutes = require('./modules/driverSchedule/driverSchedule.routes');
 const accountingPeriodsRoutes = require('./modules/accountingPeriods/accountingPeriods.routes');
 const replenishmentRoutes = require('./modules/replenishment/replenishment.routes');
 const locationsRoutes = require('./modules/locations/locations.routes');
@@ -40,6 +41,7 @@ app.use('/inventory-counts', inventoryCountsRoutes);
 app.use('/closings', closingRoutes);
 app.use('/work-shifts', workShiftsRoutes);
 app.use('/scheduled-shifts', scheduledShiftsRoutes);
+app.use('/driver-schedule', driverScheduleRoutes);
 app.use('/accounting-periods', accountingPeriodsRoutes);
 app.use('/replenishment', replenishmentRoutes);
 app.use('/locations', locationsRoutes);

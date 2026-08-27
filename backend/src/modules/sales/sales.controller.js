@@ -39,4 +39,14 @@ async function getById(req, res, next) {
   }
 }
 
-module.exports = { create, listMine, getById };
+async function stats(req, res, next) {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 30);
+    const data = await salesService.getSalesStats(days);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { create, listMine, getById, stats };

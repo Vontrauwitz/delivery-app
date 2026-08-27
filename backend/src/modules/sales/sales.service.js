@@ -3,7 +3,7 @@ const Product = require('../products/product.model');
 const HttpError = require('../../shared/httpError');
 const round2 = require('../../shared/round2');
 const { calculateLineSubtotal } = require('../../shared/pricing');
-const { SALE_STATUSES } = require('../../shared/constants');
+const { SALE_STATUSES, INVENTORY_AFFECTING_SALE_STATUSES } = require('../../shared/constants');
 const { validatePaymentsShape } = require('../payments/payments.validation');
 const { validatePaymentsMatchTotal } = require('../payments/payments.service');
 const auditService = require('../audit/audit.service');
@@ -129,10 +129,75 @@ async function getSaleById(id) {
   return sale;
 }
 
+// Manager-dashboard aggregation — real Sale data only, nothing fabricated. "Counts as a real
+// sale" uses the exact same status set the rest of the app already treats that way
+// (INVENTORY_AFFECTING_SALE_STATUSES: PENDING/APPROVED/INCIDENT) — a CANCELLED sale is voided
+// and excluded here for the same reason it's excluded from inventory/replenishment math.
+async function getSalesStats(days = 7) {
+  const rangeStart = new Date();
+  rangeStart.setDate(rangeStart.getDate() - (days - 1));
+  rangeStart.setHours(0, 0, 0, 0);
+
+  const sales = await Sale.find({
+    status: { $in: INVENTORY_AFFECTING_SALE_STATUSES },
+    createdAt: { $gte: rangeStart },
+  }).select('createdAt totalFinal payments items');
+
+  const dayKey = (d) => new Date(d).toISOString().slice(0, 10);
+
+  const daily = [];
+  const dailyByKey = new Map();
+  for (let i = 0; i < days; i++) {
+    const d = new Date(rangeStart);
+    d.setDate(d.getDate() + i);
+    const entry = { date: dayKey(d), count: 0, total: 0 };
+    daily.push(entry);
+    dailyByKey.set(entry.date, entry);
+  }
+
+  const paymentSplit = {};
+  const productTotals = new Map();
+
+  for (const sale of sales) {
+    const entry = dailyByKey.get(dayKey(sale.createdAt));
+    if (entry) {
+      entry.count += 1;
+      entry.total = round2(entry.total + sale.totalFinal);
+    }
+
+    for (const payment of sale.payments) {
+      paymentSplit[payment.method] = round2((paymentSplit[payment.method] || 0) + payment.amount);
+    }
+
+    for (const item of sale.items) {
+      const key = String(item.product);
+      const prev = productTotals.get(key) || { quantity: 0, revenue: 0 };
+      prev.quantity += item.quantity;
+      prev.revenue = round2(prev.revenue + item.subtotal);
+      productTotals.set(key, prev);
+    }
+  }
+
+  const products = await Product.find({ _id: { $in: Array.from(productTotals.keys()) } }).select('name icon');
+  const productMap = new Map(products.map((p) => [String(p._id), p]));
+
+  const topProducts = Array.from(productTotals.entries())
+    .map(([productId, agg]) => ({
+      product: productMap.get(productId) || { _id: productId, name: 'Producto eliminado', icon: '📦' },
+      quantity: agg.quantity,
+      revenue: agg.revenue,
+    }))
+    .sort((a, b) => b.quantity - a.quantity)
+    .slice(0, 5);
+
+  return { days, daily, paymentSplit, topProducts };
+}
+
 module.exports = {
   createSale,
   listSalesByDriver,
   getSaleById,
+  getSalesStats,
   buildItemsFromRequest,
   buildAdjustment,
 };

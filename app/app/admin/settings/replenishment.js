@@ -1,14 +1,31 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TextInput, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../src/modules/auth/useAuth';
 import * as replenishmentApi from '../../../src/modules/replenishment/api';
-import ScreenHeader from '../../../src/shared/ScreenHeader';
-import { colors, spacing, radii, typography, softShadow } from '../../../src/shared/theme';
+import NeoCard from '../../../src/modules/dashboard/NeoCard';
+import { neoColors, neoSpacing, neoRadii, neoTypography } from '../../../src/shared/neoTheme';
+
+// "← Configuración" back-row, matching Choferes and Programación — this screen has no entry
+// point other than Configuración.
+function Header({ onBack }) {
+  return (
+    <View style={styles.header}>
+      <Pressable style={styles.backRow} onPress={onBack} hitSlop={8}>
+        <Ionicons name="chevron-back" size={18} color={neoColors.primary} />
+        <Text style={styles.backRowText}>Configuración</Text>
+      </Pressable>
+      <Text style={styles.title}>Reabastecimiento</Text>
+    </View>
+  );
+}
 
 // Per-product replenishment settings (coverage days, safety stock) — the one genuine "config"
 // concept left after Reabastecimiento's day-to-day suggestions moved into Inventario > Reponer.
 export default function ReplenishmentSettingsScreen() {
   const { token } = useAuth();
+  const router = useRouter();
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -81,9 +98,8 @@ export default function ReplenishmentSettingsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <ScreenHeader title="Reabastecimiento" backHref="/admin/settings" onRefresh={load} refreshing={loading} />
+      <Header onBack={() => router.replace('/admin/settings')} />
 
-      <Text style={styles.sectionTitle}>Reabastecimiento por producto</Text>
       <Text style={styles.sectionHint}>
         Días de cobertura y stock de seguridad usados para calcular las cantidades sugeridas al reponer.
       </Text>
@@ -91,10 +107,12 @@ export default function ReplenishmentSettingsScreen() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.primary} />
+        <ActivityIndicator style={{ marginTop: neoSpacing.xl }} color={neoColors.primary} />
+      ) : rows.length === 0 ? (
+        <Text style={styles.empty}>No hay productos configurados.</Text>
       ) : (
         rows.map((row) => (
-          <View key={row.product._id} style={styles.card}>
+          <NeoCard key={row.product._id} style={styles.cardWrap} contentStyle={styles.cardBody}>
             <View style={styles.cardHeaderRow}>
               <Text style={styles.productName}>
                 {row.product.icon} {row.product.name}
@@ -116,9 +134,21 @@ export default function ReplenishmentSettingsScreen() {
             {editingProductId === row.product._id && (
               <View style={styles.editBox}>
                 <Text style={styles.label}>Días de cobertura</Text>
-                <TextInput style={styles.input} keyboardType="numeric" value={coverageDaysInput} onChangeText={setCoverageDaysInput} />
+                <TextInput
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={coverageDaysInput}
+                  onChangeText={setCoverageDaysInput}
+                  placeholderTextColor={neoColors.textTertiary}
+                />
                 <Text style={styles.label}>Stock de seguridad</Text>
-                <TextInput style={styles.input} keyboardType="numeric" value={safetyStockInput} onChangeText={setSafetyStockInput} />
+                <TextInput
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={safetyStockInput}
+                  onChangeText={setSafetyStockInput}
+                  placeholderTextColor={neoColors.textTertiary}
+                />
                 <View style={styles.editActions}>
                   <Pressable style={styles.saveButton} onPress={() => saveConfig(row.product._id)} disabled={saving}>
                     {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Guardar</Text>}
@@ -131,7 +161,7 @@ export default function ReplenishmentSettingsScreen() {
                 </View>
               </View>
             )}
-          </View>
+          </NeoCard>
         ))
       )}
     </ScrollView>
@@ -139,41 +169,43 @@ export default function ReplenishmentSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
-  sectionTitle: { ...typography.headline, color: colors.textPrimary, marginBottom: spacing.xs },
-  sectionHint: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.md },
-  error: { color: colors.danger, marginBottom: spacing.sm },
-  card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    ...softShadow,
-  },
-  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
-  productName: { ...typography.headline, color: colors.textPrimary },
-  link: { color: colors.primary, fontSize: 13, fontWeight: '600' },
+  container: { flex: 1, backgroundColor: neoColors.background },
+  content: { padding: neoSpacing.lg, paddingBottom: neoSpacing.xxl },
+
+  header: { marginBottom: neoSpacing.lg },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', marginBottom: neoSpacing.md },
+  backRowText: { color: neoColors.primary, fontWeight: '700', fontSize: 14 },
+  title: { ...neoTypography.title, color: neoColors.ink },
+
+  sectionHint: { ...neoTypography.caption, color: neoColors.textSecondary, marginBottom: neoSpacing.lg },
+  error: { color: neoColors.danger, fontWeight: '700', marginBottom: neoSpacing.sm },
+  empty: { color: neoColors.textSecondary, marginTop: neoSpacing.sm },
+
+  cardWrap: { marginBottom: neoSpacing.md },
+  cardBody: { padding: neoSpacing.md },
+  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: neoSpacing.xs },
+  productName: { fontSize: 15, fontWeight: '800', color: neoColors.ink },
+  link: { color: neoColors.primary, fontSize: 13, fontWeight: '700' },
   metricRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },
-  metricLabel: { ...typography.callout, color: colors.textSecondary },
-  metricValue: { ...typography.callout, color: colors.textPrimary, fontWeight: '600' },
-  metricValueMuted: { color: colors.textTertiary, fontWeight: '400' },
-  editBox: { marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm },
-  label: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.xs },
+  metricLabel: { ...neoTypography.body, color: neoColors.textSecondary },
+  metricValue: { ...neoTypography.body, color: neoColors.ink, fontWeight: '800' },
+  metricValueMuted: { color: neoColors.textTertiary, fontWeight: '500' },
+  editBox: { marginTop: neoSpacing.sm, borderTopWidth: 2, borderTopColor: neoColors.neutralMuted, paddingTop: neoSpacing.sm },
+  label: { ...neoTypography.headline, fontSize: 12, color: neoColors.textSecondary, marginBottom: neoSpacing.xs, marginTop: neoSpacing.sm },
   input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm,
+    borderWidth: 2,
+    borderColor: neoColors.ink,
+    borderRadius: neoRadii.md,
+    paddingHorizontal: neoSpacing.md,
+    paddingVertical: neoSpacing.md,
+    marginBottom: neoSpacing.sm,
     fontSize: 14,
-    color: colors.textPrimary,
+    fontWeight: '600',
+    backgroundColor: neoColors.surface,
+    color: neoColors.ink,
   },
-  editActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
-  saveButton: { flex: 1, backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: spacing.sm, alignItems: 'center' },
-  resetButton: { flex: 1, backgroundColor: colors.neutral, borderRadius: radii.md, paddingVertical: spacing.sm, alignItems: 'center' },
-  buttonText: { color: '#fff', fontWeight: '600', fontSize: 13 },
+  editActions: { flexDirection: 'row', gap: neoSpacing.sm, marginTop: neoSpacing.xs },
+  saveButton: { flex: 1, backgroundColor: neoColors.primary, borderRadius: neoRadii.md, paddingVertical: neoSpacing.sm, alignItems: 'center' },
+  resetButton: { flex: 1, backgroundColor: neoColors.neutral, borderRadius: neoRadii.md, paddingVertical: neoSpacing.sm, alignItems: 'center' },
+  buttonText: { color: '#fff', fontWeight: '800', fontSize: 13 },
 });

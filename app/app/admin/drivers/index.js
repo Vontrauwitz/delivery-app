@@ -7,13 +7,17 @@ import * as usersApi from '../../../src/modules/users/api';
 import NeoCard from '../../../src/modules/dashboard/NeoCard';
 import { neoColors, neoSpacing, neoRadii, neoTypography } from '../../../src/shared/neoTheme';
 
-function Header({ onHome }) {
+// "← Configuración" back-row, matching the same pattern used by Reabastecimiento and
+// Programación — Choferes has no entry point other than Configuración, so its back action
+// returns there (not the dashboard), consistent with the rest of this subsystem.
+function Header({ onBack }) {
   return (
-    <View style={styles.headerRow}>
-      <Text style={styles.title}>Choferes</Text>
-      <Pressable style={styles.iconButton} onPress={onHome} hitSlop={8}>
-        <Ionicons name="home-outline" size={18} color={neoColors.ink} />
+    <View style={styles.header}>
+      <Pressable style={styles.backRow} onPress={onBack} hitSlop={8}>
+        <Ionicons name="chevron-back" size={18} color={neoColors.primary} />
+        <Text style={styles.backRowText}>Configuración</Text>
       </Pressable>
+      <Text style={styles.title}>Choferes</Text>
     </View>
   );
 }
@@ -69,7 +73,7 @@ export default function DriversScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Header onHome={() => router.push('/admin')} />
+      <Header onBack={() => router.replace('/admin/settings')} />
 
       <Pressable style={styles.newButton} onPress={() => router.push('/admin/drivers/new')}>
         <Text style={styles.newButtonText}>+ Nuevo chofer</Text>
@@ -92,18 +96,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: neoColors.background },
   content: { padding: neoSpacing.lg, paddingBottom: neoSpacing.xxl },
 
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: neoSpacing.lg },
+  header: { marginBottom: neoSpacing.lg },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', marginBottom: neoSpacing.md },
+  backRowText: { color: neoColors.primary, fontWeight: '700', fontSize: 14 },
   title: { ...neoTypography.title, color: neoColors.ink },
-  iconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: neoRadii.md,
-    borderWidth: 2,
-    borderColor: neoColors.ink,
-    backgroundColor: neoColors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
   newButton: {
     backgroundColor: neoColors.primary,

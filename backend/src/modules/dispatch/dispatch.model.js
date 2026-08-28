@@ -6,7 +6,10 @@ const dispatchSchema = new mongoose.Schema(
   {
     driver: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'Vehicle' },
-    destinationLabel: { type: String, required: true },
+    // Optional customer/reference label ("Cliente VIP", "Bodega Norte") — address is what's
+    // actually required to send a driver somewhere; this is just a human-friendly reference the
+    // manager can skip. UI falls back to showing the address itself when this is blank.
+    destinationLabel: { type: String, default: '' },
     address: { type: String, required: true },
     latitude: { type: Number, min: -90, max: 90 },
     longitude: { type: Number, min: -180, max: 180 },

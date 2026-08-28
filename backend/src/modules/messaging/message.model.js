@@ -18,6 +18,9 @@ const messageSchema = new mongoose.Schema(
     },
     subject: { type: String, default: '' },
     body: { type: String, required: true },
+    // Optional manager-set flag for something that shouldn't wait to be read — purely a display
+    // hint (see frontend), never changes delivery/read behavior.
+    important: { type: Boolean, default: false },
     // One entry per recipient once they open it — never removed, "read" is permanent history.
     readBy: { type: [readReceiptSchema], default: [] },
   },

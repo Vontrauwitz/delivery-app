@@ -5,6 +5,7 @@ import * as dispatchApi from '../../src/modules/dispatch/api';
 import { openInMaps } from '../../src/shared/openInMaps';
 import { DISPATCH_STATUS_LABELS, DISPATCH_STATUS_COLORS } from '../../src/shared/constants';
 import ScreenHeader from '../../src/shared/ScreenHeader';
+import { colors, spacing, radii, typography, softShadow } from '../../src/shared/theme';
 
 export default function DriverDispatchScreen() {
   const { token } = useAuth();
@@ -12,6 +13,11 @@ export default function DriverDispatchScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actingId, setActingId] = useState(null);
+  // Past dispatches are collapsed by default (only label/address/status) — tapping one opens it
+  // to reveal the note and the "abrir en mapas" link, same "tap to open details" affordance as
+  // the inbox. Active dispatches stay always-expanded since their primary action (Aceptar/
+  // Completar) needs to be visible without an extra tap.
+  const [expandedPastId, setExpandedPastId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,7 +76,7 @@ export default function DriverDispatchScreen() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 20 }} />
+        <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />
       ) : (
         <>
           <Text style={styles.sectionTitle}>Activos</Text>
@@ -80,7 +86,9 @@ export default function DriverDispatchScreen() {
             active.map((d) => (
               <View key={d._id} style={styles.card}>
                 <View style={styles.cardRow}>
-                  <Text style={styles.label}>{d.destinationLabel}</Text>
+                  <Text style={styles.label} numberOfLines={1}>
+                    {d.destinationLabel || d.address}
+                  </Text>
                   <Text style={[styles.status, { color: DISPATCH_STATUS_COLORS[d.status] }]}>
                     {DISPATCH_STATUS_LABELS[d.status]}
                   </Text>
@@ -113,17 +121,34 @@ export default function DriverDispatchScreen() {
           {past.length > 0 && (
             <>
               <Text style={styles.sectionTitle}>Historial</Text>
-              {past.map((d) => (
-                <View key={d._id} style={styles.card}>
-                  <View style={styles.cardRow}>
-                    <Text style={styles.label}>{d.destinationLabel}</Text>
-                    <Text style={[styles.status, { color: DISPATCH_STATUS_COLORS[d.status] }]}>
-                      {DISPATCH_STATUS_LABELS[d.status]}
-                    </Text>
-                  </View>
-                  <Text style={styles.address}>{d.address}</Text>
-                </View>
-              ))}
+              {past.map((d) => {
+                const expanded = expandedPastId === d._id;
+                return (
+                  <Pressable
+                    key={d._id}
+                    style={styles.card}
+                    onPress={() => setExpandedPastId(expanded ? null : d._id)}
+                  >
+                    <View style={styles.cardRow}>
+                      <Text style={styles.label} numberOfLines={1}>
+                        {d.destinationLabel || d.address}
+                      </Text>
+                      <Text style={[styles.status, { color: DISPATCH_STATUS_COLORS[d.status] }]}>
+                        {DISPATCH_STATUS_LABELS[d.status]}
+                      </Text>
+                    </View>
+                    <Text style={styles.address}>{d.address}</Text>
+                    {expanded && (
+                      <>
+                        {d.note ? <Text style={styles.note}>Nota: {d.note}</Text> : null}
+                        <Pressable style={styles.mapsButton} onPress={() => openInMaps(d.mapsUrl)}>
+                          <Text style={styles.mapsButtonText}>Abrir en mapas</Text>
+                        </Pressable>
+                      </>
+                    )}
+                  </Pressable>
+                );
+              })}
             </>
           )}
         </>
@@ -133,20 +158,28 @@ export default function DriverDispatchScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 20, paddingBottom: 60 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8 },
-  error: { color: '#dc2626', marginBottom: 8 },
-  empty: { color: '#666' },
-  card: { borderWidth: 1, borderColor: '#e5e5e5', borderRadius: 10, padding: 12, marginBottom: 10 },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
-  label: { fontSize: 16, fontWeight: '600', flexShrink: 1 },
-  status: { fontSize: 13, fontWeight: '700' },
-  address: { fontSize: 13, color: '#666', marginTop: 2 },
-  note: { fontSize: 12, color: '#666', marginTop: 4, fontStyle: 'italic' },
-  mapsButton: { marginTop: 10, borderWidth: 1, borderColor: '#2563eb', borderRadius: 8, paddingVertical: 8, alignItems: 'center' },
-  mapsButtonText: { color: '#2563eb', fontWeight: '600', fontSize: 13 },
-  actionButton: { marginTop: 8, backgroundColor: '#2563eb', borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
-  completeButton: { backgroundColor: '#16a34a' },
+  container: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  sectionTitle: { ...typography.headline, color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm },
+  error: { color: colors.danger, marginBottom: spacing.sm },
+  empty: { color: colors.textSecondary },
+  card: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    ...softShadow,
+  },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
+  label: { ...typography.headline, fontSize: 16, flexShrink: 1, color: colors.textPrimary },
+  status: { ...typography.caption, fontWeight: '700' },
+  address: { ...typography.subhead, color: colors.textSecondary, marginTop: 2 },
+  note: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs, fontStyle: 'italic' },
+  mapsButton: { marginTop: spacing.sm, borderWidth: 1, borderColor: colors.primary, borderRadius: radii.md, paddingVertical: spacing.sm, alignItems: 'center' },
+  mapsButtonText: { color: colors.primary, fontWeight: '600', fontSize: 13 },
+  actionButton: { marginTop: spacing.sm, backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: spacing.sm, alignItems: 'center' },
+  completeButton: { backgroundColor: colors.success },
   actionButtonText: { color: '#fff', fontWeight: '600' },
 });

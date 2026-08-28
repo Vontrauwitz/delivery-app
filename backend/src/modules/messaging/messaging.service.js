@@ -3,7 +3,7 @@ const User = require('../users/user.model');
 const HttpError = require('../../shared/httpError');
 const { ROLES } = require('../../shared/constants');
 
-async function sendMessage({ senderId, recipientIds, subject, body }) {
+async function sendMessage({ senderId, recipientIds, subject, body, important }) {
   if (!Array.isArray(recipientIds) || recipientIds.length === 0) {
     throw new HttpError(400, 'Debes indicar al menos un destinatario');
   }
@@ -22,6 +22,7 @@ async function sendMessage({ senderId, recipientIds, subject, body }) {
     recipients: uniqueIds,
     subject: (subject || '').trim(),
     body: body.trim(),
+    important: Boolean(important),
     readBy: [],
   });
 

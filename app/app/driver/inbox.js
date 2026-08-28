@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/modules/auth/useAuth';
 import * as messagingApi from '../../src/modules/messaging/api';
 import ScreenHeader from '../../src/shared/ScreenHeader';
+import { colors, spacing, radii, typography, softShadow } from '../../src/shared/theme';
 
 export default function InboxScreen() {
   const { token } = useAuth();
@@ -55,14 +57,19 @@ export default function InboxScreen() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 20 }} />
+        <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />
       ) : messages.length === 0 ? (
         <Text style={styles.empty}>No tienes mensajes.</Text>
       ) : (
         messages.map((m) => (
           <Pressable key={m._id} style={[styles.card, m._id === selectedId && styles.cardActive]} onPress={() => openMessage(m)}>
             <View style={styles.cardRow}>
-              <Text style={[styles.subject, !m.isRead && styles.subjectUnread]}>{m.subject || '(sin asunto)'}</Text>
+              <View style={styles.subjectRow}>
+                {m.important && <Ionicons name="alert-circle" size={15} color={colors.warning} style={styles.importantIcon} />}
+                <Text style={[styles.subject, !m.isRead && styles.subjectUnread]} numberOfLines={1}>
+                  {m.subject || '(sin asunto)'}
+                </Text>
+              </View>
               {!m.isRead && <View style={styles.unreadDot} />}
             </View>
             <Text style={styles.meta}>
@@ -77,16 +84,26 @@ export default function InboxScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 20, paddingBottom: 60 },
-  error: { color: '#dc2626', marginBottom: 8 },
-  empty: { color: '#666', marginTop: 20, textAlign: 'center' },
-  card: { borderWidth: 1, borderColor: '#e5e5e5', borderRadius: 10, padding: 12, marginBottom: 10 },
-  cardActive: { borderColor: '#2563eb' },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
-  subject: { fontSize: 15, fontWeight: '500', flexShrink: 1 },
+  container: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  error: { color: colors.danger, marginBottom: spacing.sm },
+  empty: { color: colors.textSecondary, marginTop: spacing.xl, textAlign: 'center' },
+  card: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    ...softShadow,
+  },
+  cardActive: { borderColor: colors.primary },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
+  subjectRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
+  importantIcon: { marginRight: 2 },
+  subject: { ...typography.callout, fontWeight: '500', flexShrink: 1, color: colors.textPrimary },
   subjectUnread: { fontWeight: '700' },
-  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#2563eb' },
-  meta: { fontSize: 12, color: '#666', marginTop: 2 },
-  body: { fontSize: 14, color: '#333', marginTop: 10, borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 10 },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary },
+  meta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  body: { ...typography.subhead, color: colors.textPrimary, marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm },
 });

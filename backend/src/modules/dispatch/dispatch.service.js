@@ -18,8 +18,8 @@ async function createDispatch({ driverId, vehicleId, destinationLabel, address, 
   if (!driver) {
     throw new HttpError(400, 'Chofer inválido o inactivo');
   }
-  if (!destinationLabel || !destinationLabel.trim()) {
-    throw new HttpError(400, 'La etiqueta del destino es requerida');
+  if (destinationLabel !== undefined && destinationLabel !== null && !destinationLabel.trim()) {
+    throw new HttpError(400, 'La referencia no puede ser un texto vacío');
   }
   if (!address || !address.trim()) {
     throw new HttpError(400, 'La dirección es requerida');
@@ -37,7 +37,7 @@ async function createDispatch({ driverId, vehicleId, destinationLabel, address, 
   const dispatch = await Dispatch.create({
     driver: driverId,
     vehicle: vehicle ? vehicle._id : undefined,
-    destinationLabel: destinationLabel.trim(),
+    destinationLabel: (destinationLabel || '').trim(),
     address: address.trim(),
     latitude: latitude !== undefined && latitude !== null ? Number(latitude) : undefined,
     longitude: longitude !== undefined && longitude !== null ? Number(longitude) : undefined,

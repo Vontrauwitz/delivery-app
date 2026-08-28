@@ -1,7 +1,7 @@
 import request from '../../shared/httpClient';
 
-export function sendMessage(token, { recipients, subject, body }) {
-  return request('/messaging', { method: 'POST', body: { recipients, subject, body }, token });
+export function sendMessage(token, { recipients, subject, body, important }) {
+  return request('/messaging', { method: 'POST', body: { recipients, subject, body, important }, token });
 }
 
 export function listInbox(token) {

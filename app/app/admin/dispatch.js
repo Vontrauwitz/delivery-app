@@ -1,13 +1,30 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TextInput, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/modules/auth/useAuth';
 import * as usersApi from '../../src/modules/users/api';
 import * as dispatchApi from '../../src/modules/dispatch/api';
+import NeoCard from '../../src/modules/dashboard/NeoCard';
 import { DISPATCH_STATUS_LABELS, DISPATCH_STATUS_COLORS } from '../../src/shared/constants';
-import ScreenHeader from '../../src/shared/ScreenHeader';
+import { neoColors, neoSpacing, neoRadii, neoTypography } from '../../src/shared/neoTheme';
+
+// Dispatch is a top-level operational tool reached directly from the dashboard (not nested under
+// Configuración) — same "title + home icon" header as Mensajes and the dashboard itself.
+function Header({ onHome }) {
+  return (
+    <View style={styles.headerRow}>
+      <Text style={styles.title}>Dispatch</Text>
+      <Pressable style={styles.iconButton} onPress={onHome} hitSlop={8}>
+        <Ionicons name="home-outline" size={18} color={neoColors.ink} />
+      </Pressable>
+    </View>
+  );
+}
 
 export default function AdminDispatchScreen() {
   const { token } = useAuth();
+  const router = useRouter();
 
   const [drivers, setDrivers] = useState([]);
   const [selectedDriverId, setSelectedDriverId] = useState(null);
@@ -19,6 +36,8 @@ export default function AdminDispatchScreen() {
 
   const [dispatches, setDispatches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [cancellingId, setCancellingId] = useState(null);
 
   const loadDrivers = useCallback(async () => {
     try {
@@ -35,10 +54,11 @@ export default function AdminDispatchScreen() {
 
   const loadDispatches = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       setDispatches(await dispatchApi.listAll(token));
     } catch (err) {
-      setError(err.message || 'No se pudieron cargar los dispatches');
+      setLoadError(err.message || 'No se pudieron cargar los dispatches');
     } finally {
       setLoading(false);
     }
@@ -49,14 +69,12 @@ export default function AdminDispatchScreen() {
     loadDispatches();
   }, [loadDrivers, loadDispatches]);
 
+  const canCreate = !!selectedDriverId && address.trim().length > 0 && !creating;
+
   async function handleCreate() {
     setError('');
     if (!selectedDriverId) {
       setError('Selecciona un chofer');
-      return;
-    }
-    if (!destinationLabel.trim()) {
-      setError('La etiqueta del destino es requerida');
       return;
     }
     if (!address.trim()) {
@@ -83,112 +101,193 @@ export default function AdminDispatchScreen() {
   }
 
   async function handleCancel(id) {
-    setError('');
+    setCancellingId(id);
+    setLoadError('');
     try {
       const updated = await dispatchApi.cancelDispatch(token, id);
       setDispatches((prev) => prev.map((d) => (d._id === updated._id ? updated : d)));
     } catch (err) {
-      setError(err.message || 'No se pudo cancelar el dispatch');
+      setLoadError(err.message || 'No se pudo cancelar el dispatch');
+    } finally {
+      setCancellingId(null);
     }
   }
 
+  const active = dispatches.filter((d) => d.status === 'PENDING' || d.status === 'ACCEPTED');
+  const past = dispatches.filter((d) => d.status === 'COMPLETED' || d.status === 'CANCELLED');
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <ScreenHeader
-        title="Dispatch"
-        backHref="/admin"
-        onRefresh={() => {
-          loadDrivers();
-          loadDispatches();
-        }}
-        refreshing={loading}
-      />
+      <Header onHome={() => router.push('/admin')} />
 
-      <Text style={styles.sectionTitle}>Nuevo dispatch</Text>
-      <Text style={styles.label}>Chofer</Text>
-      <View style={styles.driverRow}>
-        {drivers.map((d) => (
-          <Pressable
-            key={d._id}
-            style={[styles.driverChip, d._id === selectedDriverId && styles.driverChipActive]}
-            onPress={() => setSelectedDriverId(d._id)}
-          >
-            <Text style={[styles.driverChipText, d._id === selectedDriverId && styles.driverChipTextActive]}>{d.name}</Text>
-          </Pressable>
-        ))}
-      </View>
-      {drivers.length === 0 && <Text style={styles.empty}>No hay choferes registrados.</Text>}
+      <NeoCard style={styles.cardWrap} contentStyle={styles.cardBody}>
+        <Text style={styles.cardEyebrow}>Nuevo dispatch</Text>
 
-      <Text style={styles.label}>Etiqueta del destino</Text>
-      <TextInput style={styles.input} value={destinationLabel} onChangeText={setDestinationLabel} placeholder="Ej. Bodega Norte" />
+        <Text style={styles.label}>Chofer</Text>
+        <View style={styles.chipRow}>
+          {drivers.map((d) => (
+            <Pressable
+              key={d._id}
+              style={[styles.chip, d._id === selectedDriverId && styles.chipActive]}
+              onPress={() => setSelectedDriverId(d._id)}
+            >
+              <Text style={[styles.chipText, d._id === selectedDriverId && styles.chipTextActive]}>{d.name}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {drivers.length === 0 && <Text style={styles.empty}>No hay choferes registrados.</Text>}
 
-      <Text style={styles.label}>Dirección</Text>
-      <TextInput style={styles.input} value={address} onChangeText={setAddress} placeholder="Dirección completa" />
+        <Text style={styles.label}>Dirección</Text>
+        <TextInput
+          style={styles.input}
+          value={address}
+          onChangeText={setAddress}
+          placeholder="Dirección completa"
+          placeholderTextColor={neoColors.textTertiary}
+        />
 
-      <Text style={styles.label}>Nota (opcional)</Text>
-      <TextInput style={styles.input} value={note} onChangeText={setNote} placeholder="Nota" />
+        <Text style={styles.label}>Cliente / referencia (opcional)</Text>
+        <TextInput
+          style={styles.input}
+          value={destinationLabel}
+          onChangeText={setDestinationLabel}
+          placeholder="Ej. Bodega Norte"
+          placeholderTextColor={neoColors.textTertiary}
+        />
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+        <Text style={styles.label}>Instrucciones / nota (opcional)</Text>
+        <TextInput
+          style={styles.input}
+          value={note}
+          onChangeText={setNote}
+          placeholder="Ej. Tocar el timbre del lado izquierdo"
+          placeholderTextColor={neoColors.textTertiary}
+        />
 
-      <Pressable style={styles.button} onPress={handleCreate} disabled={creating}>
-        {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Crear dispatch</Text>}
-      </Pressable>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Text style={styles.sectionTitle}>Todos los dispatches</Text>
+        <Pressable style={[styles.createButton, !canCreate && styles.createButtonDisabled]} onPress={handleCreate} disabled={!canCreate}>
+          {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.createButtonText}>Crear dispatch</Text>}
+        </Pressable>
+      </NeoCard>
+
+      <Text style={styles.sectionTitle}>Activos</Text>
+      {loadError ? <Text style={styles.error}>{loadError}</Text> : null}
       {loading ? (
-        <ActivityIndicator />
-      ) : dispatches.length === 0 ? (
-        <Text style={styles.empty}>No hay dispatches registrados.</Text>
+        <ActivityIndicator color={neoColors.primary} style={{ marginTop: neoSpacing.md }} />
+      ) : active.length === 0 ? (
+        <Text style={styles.empty}>No hay dispatches activos.</Text>
       ) : (
-        dispatches.map((d) => (
-          <View key={d._id} style={styles.card}>
-            <View style={styles.cardRow}>
-              <Text style={styles.cardLabel}>{d.destinationLabel}</Text>
-              <Text style={[styles.status, { color: DISPATCH_STATUS_COLORS[d.status] }]}>{DISPATCH_STATUS_LABELS[d.status]}</Text>
+        active.map((d) => (
+          <NeoCard key={d._id} accentColor={DISPATCH_STATUS_COLORS[d.status]} style={styles.cardWrap} contentStyle={styles.cardBody}>
+            <View style={styles.dispatchHeaderRow}>
+              <Text style={styles.dispatchLabel} numberOfLines={1}>
+                {d.destinationLabel || d.address}
+              </Text>
+              <View style={[styles.statusPill, { backgroundColor: `${DISPATCH_STATUS_COLORS[d.status]}22` }]}>
+                <Text style={[styles.statusPillText, { color: DISPATCH_STATUS_COLORS[d.status] }]}>{DISPATCH_STATUS_LABELS[d.status]}</Text>
+              </View>
             </View>
-            <Text style={styles.cardMeta}>
+            <Text style={styles.dispatchMeta}>
               {d.driver?.name} · {d.address}
             </Text>
-            {d.note ? <Text style={styles.cardMeta}>Nota: {d.note}</Text> : null}
-            {(d.status === 'PENDING' || d.status === 'ACCEPTED') && (
-              <Pressable style={styles.cancelButton} onPress={() => handleCancel(d._id)}>
+            {d.note ? <Text style={styles.dispatchMeta}>Nota: {d.note}</Text> : null}
+            <Pressable
+              style={styles.cancelButton}
+              onPress={() => handleCancel(d._id)}
+              disabled={cancellingId === d._id}
+              hitSlop={8}
+            >
+              {cancellingId === d._id ? (
+                <ActivityIndicator color={neoColors.danger} size="small" />
+              ) : (
                 <Text style={styles.cancelButtonText}>Cancelar</Text>
-              </Pressable>
-            )}
-          </View>
+              )}
+            </Pressable>
+          </NeoCard>
         ))
+      )}
+
+      {past.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Historial</Text>
+          {past.map((d) => (
+            <NeoCard key={d._id} accentColor={DISPATCH_STATUS_COLORS[d.status]} style={styles.cardWrap} contentStyle={styles.cardBody}>
+              <View style={styles.dispatchHeaderRow}>
+                <Text style={styles.dispatchLabel} numberOfLines={1}>
+                  {d.destinationLabel || d.address}
+                </Text>
+                <View style={[styles.statusPill, { backgroundColor: `${DISPATCH_STATUS_COLORS[d.status]}22` }]}>
+                  <Text style={[styles.statusPillText, { color: DISPATCH_STATUS_COLORS[d.status] }]}>{DISPATCH_STATUS_LABELS[d.status]}</Text>
+                </View>
+              </View>
+              <Text style={styles.dispatchMeta}>
+                {d.driver?.name} · {d.address}
+              </Text>
+              {d.note ? <Text style={styles.dispatchMeta}>Nota: {d.note}</Text> : null}
+            </NeoCard>
+          ))}
+        </>
       )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 20, paddingBottom: 60 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8 },
-  label: { fontSize: 13, color: '#444', marginBottom: 4, marginTop: 8 },
-  driverRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  driverChip: { borderWidth: 1, borderColor: '#2563eb', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
-  driverChipActive: { backgroundColor: '#2563eb' },
-  driverChipText: { color: '#2563eb', fontWeight: '600' },
-  driverChipTextActive: { color: '#fff' },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
+  container: { flex: 1, backgroundColor: neoColors.background },
+  content: { padding: neoSpacing.lg, paddingBottom: neoSpacing.xxl },
+
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: neoSpacing.lg },
+  title: { ...neoTypography.title, color: neoColors.ink },
+  iconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: neoRadii.md,
+    borderWidth: 2,
+    borderColor: neoColors.ink,
+    backgroundColor: neoColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  error: { color: '#dc2626', marginTop: 8 },
-  button: { backgroundColor: '#2563eb', borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
-  buttonText: { color: '#fff', fontWeight: '600', fontSize: 16 },
-  empty: { color: '#666' },
-  card: { borderWidth: 1, borderColor: '#e5e5e5', borderRadius: 10, padding: 12, marginBottom: 10 },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
-  cardLabel: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
-  status: { fontSize: 13, fontWeight: '700' },
-  cardMeta: { fontSize: 12, color: '#666', marginTop: 4 },
-  cancelButton: { marginTop: 8, alignSelf: 'flex-start', backgroundColor: '#dc2626', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
-  cancelButtonText: { color: '#fff', fontWeight: '600', fontSize: 12 },
+
+  cardWrap: { marginBottom: neoSpacing.md },
+  cardBody: { padding: neoSpacing.md },
+  cardEyebrow: { ...neoTypography.headline, fontSize: 12, color: neoColors.textSecondary, marginBottom: neoSpacing.xs },
+
+  label: { ...neoTypography.headline, fontSize: 12, color: neoColors.textSecondary, marginBottom: neoSpacing.xs, marginTop: neoSpacing.sm },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: neoSpacing.sm },
+  chip: { borderWidth: 2, borderColor: neoColors.ink, borderRadius: neoRadii.full, paddingHorizontal: neoSpacing.md, paddingVertical: neoSpacing.sm },
+  chipActive: { backgroundColor: neoColors.primary, borderColor: neoColors.primary },
+  chipText: { color: neoColors.ink, fontWeight: '700' },
+  chipTextActive: { color: '#fff' },
+
+  input: {
+    borderWidth: 2,
+    borderColor: neoColors.ink,
+    borderRadius: neoRadii.md,
+    paddingHorizontal: neoSpacing.md,
+    paddingVertical: neoSpacing.md,
+    fontSize: 14,
+    fontWeight: '600',
+    backgroundColor: neoColors.surface,
+    color: neoColors.ink,
+  },
+
+  error: { color: neoColors.danger, fontWeight: '700', marginTop: neoSpacing.sm },
+  empty: { color: neoColors.textSecondary, marginTop: neoSpacing.sm },
+
+  createButton: { backgroundColor: neoColors.primary, borderRadius: neoRadii.md, paddingVertical: neoSpacing.md, alignItems: 'center', marginTop: neoSpacing.lg },
+  createButtonDisabled: { opacity: 0.5 },
+  createButtonText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+
+  sectionTitle: { ...neoTypography.title, fontSize: 18, color: neoColors.ink, marginBottom: neoSpacing.md },
+
+  dispatchHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: neoSpacing.xs },
+  dispatchLabel: { fontSize: 15, fontWeight: '800', color: neoColors.ink, flexShrink: 1 },
+  dispatchMeta: { ...neoTypography.caption, color: neoColors.textSecondary, marginTop: neoSpacing.xs },
+  statusPill: { borderRadius: neoRadii.full, paddingHorizontal: neoSpacing.sm, paddingVertical: 4 },
+  statusPillText: { fontSize: 11, fontWeight: '800' },
+
+  cancelButton: { alignSelf: 'flex-start', marginTop: neoSpacing.sm },
+  cancelButtonText: { color: neoColors.danger, fontSize: 12, fontWeight: '700' },
 });

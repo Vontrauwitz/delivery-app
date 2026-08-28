@@ -7,6 +7,7 @@ async function send(req, res, next) {
       recipientIds: req.body.recipients,
       subject: req.body.subject,
       body: req.body.body,
+      important: req.body.important,
     });
     res.status(201).json(message);
   } catch (err) {

@@ -1,6 +1,100 @@
 # PLAN.md — Delivery App
 
-> Documento de planificación. No contiene implementación todavía. Objetivo: definir arquitectura, estructura de carpetas, modelos de datos y fases de desarrollo antes de escribir código.
+> Documento de planificación original. Las secciones 1–11 y "Puntos de extensión" (más abajo) se escribieron **antes** de implementar código y se conservan tal cual por su valor como registro de la arquitectura e intención original — varias decisiones ahí siguen vigentes exactamente como se diseñaron (ej. el cálculo de `isStale` en `locations`, la separación estricta por dominio, los enums abiertos). Donde la implementación real se apartó o amplió ese diseño original, se añadieron notas explícitas en línea en vez de reescribir la historia.
+>
+> El bloque que sigue es la capa viva de estado del proyecto — se actualiza en cada checkpoint de documentación y es la fuente de verdad sobre "qué existe hoy". Se escribe en español, como el resto del documento.
+
+---
+
+## IMPLEMENTADO / CERRADO
+
+Verificado contra el repositorio real (módulos de backend, rutas de frontend y suites de test que pasan), no contra los supuestos del plan original:
+
+- **Fundamentos / autenticación / usuarios / productos** — autenticación JWT con guards por rol (`driver`/`manager`/`admin`), módulo `users` (incluyendo el CRUD completo de choferes, solo para manager, agregado después — ver Gestión de choferes/vehículos más abajo), CRUD de `products`, más un módulo `promotions` (precios por paquete "cantidad por precio") que no existía en absoluto en el plan original.
+- **Ventas + flujo de aprobación del manager** — `sales` + `approvals`, exactamente el modelo `PENDING → APPROVED/CANCELLED/INCIDENT` descrito en las Secciones 5–6 más abajo, implementado tal como se diseñó originalmente.
+- **Fundamento de AuditLog** — `audit.service.logChange()`/`getHistory()`, sin cambios de forma desde el diseño original (`entity`, `entityId`, `action`, `changes[]`, `performedBy`, `performedAt`). El enum de `action` sí creció mucho más allá de los cinco valores ilustrativos originales (`CREATE`/`UPDATE`/`APPROVE`/`CANCEL`/`MARK_INCIDENT`) hasta ~35 valores que abarcan casi todos los módulos — gestión de choferes, programación, cierres, y ahora mensajería/dispatch (ver abajo). El mecanismo en sí nunca cambió; solo creció su vocabulario, tal como lo previó el diseño original ("fuente única de verdad").
+- **Sesiones de inventario y controles de inventario** — `inventory` (stock actual por chofer, no por vehículo como se bosquejó originalmente en la Sección 4 — el inventario sigue al chofer a través de cambios de vehículo) e `inventoryCounts` (`INITIAL`/`PARTIAL`/`CLOSING`/`WEEKLY`), tal como se diseñó.
+- **Inicio/fin de turno (WorkShift)** — **no estaba en absoluto en el plan original.** Se agregó un concepto de fichaje de entrada/salida del chofer (`WorkShift`, un solo turno `OPEN` por chofer a la vez) como módulo propio, separado de las sesiones de inventario y de la programación. Ahora es la base contra la que se compara la programación de choferes (ver abajo).
+- **Flujo de cierre** — `closing` (conciliación de efectivo + inventario), implementado con un conjunto de estados más rico que el bosquejado originalmente: `Closing` ahora tiene `OPEN`/`CLOSED`/`REOPENED` (un manager puede devolver un cierre para corrección — el plan original solo tenía `OPEN`/`CLOSED`).
+- **Gestión de choferes/vehículos** — `vehicles` promovido a módulo completo; CRUD completo de choferes (solo manager: crear/editar/activar/desactivar/borrado definitivo) agregado sobre el módulo `users` original, mínimo, con verificación de referencias antes del borrado definitivo (ventas, turnos de trabajo, turnos programados, excepciones de horario, inventario, dispatch, pings de ubicación, mensajes, y el propio historial de auditoría del chofer bloquean el borrado; la desactivación nunca lo hace) y cobertura completa de auditoría `DRIVER_*`. Nada de esto existía en el plan original.
+- **Programación de choferes / horarios recurrentes / excepciones** — un subsistema enteramente nuevo, no presente en el plan original: `User.defaultShift` (patrón semanal recurrente, con una compuerta `effectiveFrom`), `DriverScheduleException` (excepción puntual para una fecha: `WORK`/`REST`/`CUSTOM`), `ScheduledShift` (un turno explícito, luego emparejado con un `WorkShift` real), y `shared/scheduleResolution.js` (una cadena de prioridad determinista: `ScheduledShift` explícito > `DriverScheduleException` > `defaultShift` recurrente) más un endpoint en vivo de estado "esperado vs. real" usado por las alertas del dashboard del manager.
+- **Dashboard de administración** — un dashboard de manager construido desde cero (métricas, alertas operativas, gráfica de ventas de 7 días, desglose por método de pago, productos más vendidos, vista rápida de inventario) con un sistema visual "neo-brutalista" aprobado (`neoTheme.js`/`NeoCard`), que no formaba parte de la descripción mínima del panel en el plan original.
+- **Navegación de Configuración** — `Configuración` es ahora una pantalla de aterrizaje por categorías (no un formulario de ajustes plano) que enlaza a:
+  - **Choferes** — el CRUD de gestión de choferes de arriba.
+  - **Horarios** — el subsistema de programación de choferes de arriba (misma pantalla `Programación`, con contexto de navegación de regreso distinto según si se entró desde Configuración o desde el detalle de un chofer específico).
+  - **Reabastecimiento** — los ajustes originales de cobertura/stock de seguridad por producto, migrados al mismo sistema visual.
+- **Mensajería** — módulo `messaging`: el manager redacta a uno o varios choferes, con un flag opcional `important` (no estaba en el modelo original), bandeja de entrada del chofer con estado leído/no leído y una insignia de no-leídos en el dashboard del chofer.
+- **Dispatch** — implementado como un concepto genuinamente distinto y más rico que el descrito en el plan original (ver la nota en la Sección 4 más abajo): una máquina de estados completa `PENDING → ACCEPTED → COMPLETED` más `CANCELLED` iniciado por el manager, propiedad del chofer verificada del lado del servidor en cada transición, y un `mapsUrl` calculado en el servidor que se abre mediante un enlace seguro por plataforma ("Abrir en mapas") — no la simple "tarjeta de acuse de recibo con dirección" bosquejada originalmente.
+- **Integración de AuditLog en Mensajería + Dispatch** — `MESSAGE_SENT`, `MESSAGE_READ` (idempotente — volver a leer un mensaje ya leído nunca escribe una entrada duplicada), `DISPATCH_CREATED`, `DISPATCH_ACCEPTED`, `DISPATCH_COMPLETED`, `DISPATCH_CANCELLED`. Reutiliza exactamente el `audit.service.logChange()` existente — no se introdujo ningún mecanismo de registro paralelo.
+
+**Checkpoint verificado actual:** `686772f` — *feat: add messaging and dispatch audit logging*
+
+---
+
+## DECISIONES ARQUITECTÓNICAS
+
+Decisiones vigentes, actuales al checkpoint anterior:
+
+- **Configuración contiene la configuración administrativa persistente** (Choferes, Horarios, Reabastecimiento) — cosas que un manager configura una vez y revisita ocasionalmente, no herramientas operativas del día a día.
+- **Mensajería y Dispatch siguen siendo flujos operativos, no elementos de Configuración.** Permanecen accesibles directamente desde la navegación propia del dashboard del manager, porque se usan continuamente durante la operación diaria, no se configuran una vez y se dejan quietas.
+- **Los módulos siguen separados por dominio de negocio**, exactamente según el principio original de la Sección 2 — un módulo solo llega a otro a través de su `*.service.js`, nunca accediendo directamente al modelo de otro módulo. Esto se ha mantenido para cada módulo agregado desde el plan original (`workShifts`, `driverSchedule`, `accountingPeriods`, `promotions`, `vehicles` incluidos).
+- **AuditLog sigue siendo el único mecanismo de auditoría compartido.** Cada dominio nuevo que necesitó registro de auditoría (gestión de choferes, programación, mensajería, dispatch) se conectó al `audit.service.logChange()`/modelo `AuditLog` existente, en vez de inventar un log específico de dominio.
+- **No crear sistemas de auditoría/registro paralelos.** Instrucción explícita, repetida en distintos checkpoints — se mantiene como restricción dura de aquí en adelante.
+- **Evitar nuevos roles de usuario innecesarios hasta que el flujo realmente lo requiera.** `ROLES` sigue teniendo exactamente `driver`/`manager`/`admin`, sin cambios desde el plan original, a pesar de que se agregó funcionalidad sustancial nueva (programación, dispatch, gestión de choferes) sin necesitar un rol nuevo.
+
+---
+
+## SIGUIENTE FASE PLANIFICADA
+
+**Tickets de solicitud de reabastecimiento.**
+
+Diseño previsto (aún no implementado):
+
+- Registros persistentes de `ReplenishmentRequest` en MongoDB — el módulo `replenishment` actual es un servicio de cálculo sin estado, sin modelo propio (según el diseño original de la Sección 8); esto introduce el primer registro persistido en ese módulo.
+- Tickets creados por el manager.
+- Asociación opcional con chofer/vehículo.
+- Ítems: `product` + `quantity`.
+- Estados: `DRAFT` → `SENT` → `FULFILLED`, con `CANCELLED` como estado terminal alternativo.
+- Retención histórica — los tickets nunca se borran, siguiendo la convención de "nada real se borra" ya usada en todo el resto del sistema (`Sale.CANCELLED`, `Closing.REOPENED`, el historial de auditoría en general).
+- Cobertura de AuditLog desde el día uno (no diferida esta vez, a diferencia del primer paso de Mensajería/Dispatch).
+- Texto de pedido/compartir generado de forma determinista — un resumen en texto plano del ticket, generado siempre de la misma forma a partir de los mismos datos (sin IA/LLM involucrada en su generación).
+- Compartir empieza con la **hoja de compartir nativa del sistema operativo** y **SMS/WhatsApp a través de apps ya instaladas en el dispositivo** — sin integración de backend con ninguno de los dos proveedores.
+- Explícitamente **fuera de alcance** en este checkpoint: integración con Twilio, integración con la API de WhatsApp Business, un rol de personal de almacén/fulfillment.
+- Cualquier integración futura con un proveedor externo (Twilio, API de WhatsApp Business, etc.) debe poder incorporarse sin rediseñar el modelo `ReplenishmentRequest` — la generación del texto para compartir y el ticket persistido se mantienen deliberadamente independientes de *cómo* se termina entregando el ticket.
+
+---
+
+## PENDIENTE / BACKLOG
+
+Preservado explícitamente, no descartado, no iniciado:
+
+- **Alertas** (reglas/canales/tiempos de alerta configurables — ver la nota de dirección de producto vigente: no debe asumirse un orden de escalamiento fijo).
+- **Zona peligrosa** (la futura área de Configuración para acciones destructivas/peligrosas — deliberadamente no construida en ningún checkpoint hasta ahora).
+- **Funcionalidad de ubicación/mapa aún incompleta** — `locations`/`LocationPing` existe y alimenta la verificación de referencias adyacente a dispatch, pero todavía no hay pantalla de mapa en vivo, ni vista de historial de recorrido, ni optimización de rutas.
+- **Brechas operativas/de conteo semanal que aún quedan** — el tipo de conteo `WEEKLY` y su flujo disparado por el manager existen según el diseño original de la Sección 7, pero el pulido de punta a punta ahí no se ha revisado desde entonces.
+- **Revisión final del flujo operativo completo del manager** — un recorrido completo del día a día del manager a través de todos los módulos juntos, no módulo por módulo.
+- **Pulido de UI/UX** — heredado del alcance original de la Fase 5; buena parte del pulido ya se aplicó de forma incremental (dashboard de administración, Programación, gestión de choferes, Configuración, Mensajería/Dispatch), pero algunas pantallas más antiguas (ej. `weekly-report`, `accounting-periods`, `promotions`) no se han revisado con el sistema visual actual.
+- **Ítems de búsqueda/filtro/frescura/manejo de errores de la Fase 5 original** — siguen abiertos; ver la descripción original de la "Fase 5" en la Sección 10 más abajo.
+- **Futuras notificaciones push / integraciones de mensajería externas** — el punto de extensión del plan original (`messaging`/`dispatch` como "el lugar natural para enchufar Expo push") sigue vigente y sin implementar.
+- **Futuro flujo de almacén/proveedor, si se necesita** — no existe rol de almacén ni de fulfillment; no se construye por adelantado sin una necesidad real.
+
+---
+
+## Registro de cambios / Adiciones de alcance
+
+Registro continuo de adiciones al alcance solicitadas por el usuario, más allá del plan original. Más recientes primero.
+
+| Fecha | Adición | Estado |
+|---|---|---|
+| 2026-08 | Integración de AuditLog en Mensajería + Dispatch (`MESSAGE_SENT/READ`, `DISPATCH_CREATED/ACCEPTED/COMPLETED/CANCELLED`) | ✅ Completo |
+| 2026-08 | Consolidación de Mensajería + Dispatch (restyle neo-brutalista, etiqueta de referencia opcional en dispatch, flag `important` en mensajes, expansión de detalle del historial de dispatch del chofer) | ✅ Completo |
+| 2026-08 | Configuración reestructurada como landing de categorías (Choferes / Horarios / Reabastecimiento) con navegación de regreso consistente | ✅ Completo |
+| 2026-08 | Módulo de Gestión de Choferes (CRUD completo, verificación de referencias antes de borrar, acciones de auditoría `DRIVER_*`) | ✅ Completo |
+| 2026-08 | Subsistema de programación de choferes (`defaultShift`, `DriverScheduleException`, `ScheduledShift`, resolución determinista, estado en vivo) | ✅ Completo |
+| 2026-08 | Rediseño del dashboard de administración (sistema visual neo-brutalista) | ✅ Completo |
+| — | Módulo de Promociones (precios por paquete `QUANTITY_FOR_PRICE`) | ✅ Completo |
+| — | Módulo de Periodos Contables | ✅ Completo |
+| 2026-08-29 | Tickets de solicitud de reabastecimiento (ver "SIGUIENTE FASE PLANIFICADA" arriba) | 🔜 Planeado, no iniciado |
 
 ---
 
@@ -197,6 +291,19 @@ app/
 
 Cada componente de pantalla en `app/app/**` es **delgado**: solo compone componentes de `src/modules/*` y llama a sus hooks/api. La lógica de negocio (cálculos, validaciones) vive en `src/modules/*`, nunca en el archivo de ruta.
 
+### 3.3 Módulos añadidos después del plan original
+
+Las secciones 3.1 y 3.2 arriba son el árbol **original**, tal como se diseñó. La estructura real de `backend/src/modules/` hoy incluye, además de los 13 módulos listados en 3.1:
+
+- `accountingPeriods/` — periodos contables.
+- `driverSchedule/` — `DriverScheduleException` (excepciones de horario por fecha).
+- `promotions/` — promociones tipo "cantidad por precio" sobre productos.
+- `scheduledShifts/` — `ScheduledShift` (turnos explícitos programados).
+- `vehicles/` — antes solo un campo suelto en `User`, ahora un módulo completo (CRUD + asociación con chofer).
+- `workShifts/` — concepto nuevo, no contemplado en el plan original: fichaje de entrada/salida del chofer, independiente de las sesiones de inventario.
+
+Del lado de `app/app/`, las rutas reales bajo `(admin)` también crecieron más allá de 3.2: existen subcarpetas `admin/drivers/`, `admin/settings/`, además de `admin/schedule.js`, `admin/messages.js`, `admin/dispatch.js`, `admin/product/[id].js`, `admin/promotion/[productId].js`, y `admin/sale/[id].js`. El árbol de rutas dejó de ser plano (`(admin)/*.js`) y ahora anida por sub-dominio donde tiene sentido (ej. detalle de un producto o una venta por id).
+
 ---
 
 ## 4. Modelos principales de MongoDB (Mongoose)
@@ -300,6 +407,8 @@ Si el chofer capturó algo mal (cantidad, producto, método de pago), el manager
 ```
 Usado por `sales`/`approvals` (cambios de manager sobre una venta), `inventoryCounts` y `closing`. Es la fuente única de verdad para "qué se modificó, quién y cuándo".
 
+> **Nota (checkpoint `686772f`):** el modelo y el mecanismo (`logChange`/`getHistory`) no cambiaron. El `action` enum sí creció mucho más allá de las 5 acciones de ejemplo de arriba — hoy cubre ~35 valores repartidos entre gestión de choferes (`DRIVER_CREATE/UPDATE/ACTIVATE/DEACTIVATE/DELETE/DELETE_BLOCKED`), programación (`CREATE/UPDATE/DELETE_SCHEDULE_EXCEPTION`, `UPDATE_DEFAULT_SHIFT`), cierres (`CLOSING_SUBMITTED/REOPENED/FINALIZED`), turnos (`START_SHIFT/END_SHIFT`, `ADMIN_EDIT_SHIFT/ADMIN_CLOSE_SHIFT`), reabastecimiento, y ahora mensajería/dispatch (`MESSAGE_SENT/READ`, `DISPATCH_CREATED/ACCEPTED/COMPLETED/CANCELLED`). Sigue siendo el único mecanismo de auditoría del proyecto — ningún módulo nuevo creó su propio log paralelo.
+
 ### `InventorySession` (inventario inicial de una jornada)
 ```js
 {
@@ -339,6 +448,8 @@ Las diferencias (`quantityCounted - quantityExpected`) se calculan al leer, no s
 }
 ```
 
+> **Nota (checkpoint `686772f`):** implementado con un tercer estado, `REOPENED` — un manager puede devolver un cierre para corrección en vez de solo `OPEN`/`CLOSED`. No estaba en el diseño original.
+
 ### `LocationPing` (módulo `locations`, independiente)
 ```js
 {
@@ -361,6 +472,8 @@ Se guarda cada ping (permite historial futuro). La "ubicación actual" se obtien
 }
 ```
 
+> **Nota (checkpoint `686772f`):** se agregaron `subject: String` e `important: Boolean` (no estaban en el diseño original) para soportar el requerimiento de un flag opcional de prioridad en el composer del manager. El resto del modelo (sender/recipients/body/readBy) se implementó tal como se diseñó.
+
 ### `Dispatch` (módulo `dispatch`, direcciones/destinos)
 ```js
 {
@@ -377,7 +490,27 @@ Se guarda cada ping (permite historial futuro). La "ubicación actual" se obtien
 }
 ```
 
-`replenishment` **no tiene modelo propio**: es un servicio de cálculo que lee `Product`, `Sale` e `InventoryCount`.
+> **Divergencia real vs. plan (checkpoint `686772f`) — el ejemplo más claro de "la implementación superó el diseño original":** el plan original modelaba `Dispatch` como un broadcast de solo-lectura, estructuralmente idéntico a `Message` con una dirección adjunta (`sender`/`recipients`/`address`/`readBy`, sin estado). Lo implementado es un flujo operativo real con máquina de estados:
+> ```js
+> {
+>   driver: ObjectId(User),          // un solo chofer asignado, no un broadcast a varios
+>   vehicle: ObjectId(Vehicle),      // opcional, inferido del chofer si no se especifica
+>   destinationLabel: String,        // opcional — referencia/cliente
+>   address: String,
+>   latitude: Number,                // opcional
+>   longitude: Number,               // opcional
+>   note: String,                    // instrucciones libres, excluidas del AuditLog
+>   status: { type: String, enum: ['PENDING', 'ACCEPTED', 'COMPLETED', 'CANCELLED'] },
+>   acceptedAt: Date,
+>   completedAt: Date,
+>   cancelledAt: Date,
+>   cancelledBy: ObjectId(User),
+>   createdBy: ObjectId(User),
+> }
+> ```
+> `mapsUrl` se calcula al leer (no se guarda), igual que `isStale` en `LocationPing` arriba — mismo principio de "no persistir lo derivable". El chofer asignado controla `accept`/`complete` sobre su propio dispatch; solo el manager puede `cancel` (desde `PENDING` o `ACCEPTED`). Cada transición válida queda auditada (`DISPATCH_CREATED/ACCEPTED/COMPLETED/CANCELLED`).
+
+`replenishment` **no tiene modelo propio todavía**: sigue siendo un servicio de cálculo que lee `Product`, `Sale` e `InventoryCount`, tal como se diseñó — ver "SIGUIENTE FASE PLANIFICADA" arriba para el plan de introducir `ReplenishmentRequest` como el primer modelo persistido de este módulo.
 
 ---
 
@@ -469,31 +602,40 @@ Tres módulos independientes, sin dependencias cruzadas con `sales` ni entre sí
 
 Se mantienen separados de `sales` explícitamente: una venta nunca referencia un `Message` o `Dispatch`, y viceversa. Si en el futuro se quiere relacionar (ej. "este mensaje aplica a esta ruta"), se hace por `vehicle`/`driver`, no por acoplamiento directo de módulos.
 
+> **Nota (checkpoint `686772f`):** `dispatch` terminó siendo bastante más que "el mismo patrón que `messaging` con una dirección" — ver la divergencia documentada en el modelo `Dispatch` en la Sección 4. Es un flujo real de asignación-aceptación-entrega con estado propio por chofer, no un broadcast de solo lectura. `messaging` y `locations` sí se implementaron básicamente como se describe aquí (marcar-como-leído dejó de ser opcional: ahora alimenta el badge de no-leídos y el AuditLog `MESSAGE_READ`, pero el patrón de request es el mismo).
+
 ---
 
 ## 10. Fases de desarrollo
 
-**Fase 0 — Fundaciones**
+> Estado real de cada fase al checkpoint `686772f`, verificado contra el repositorio (no se retiran las descripciones originales — se anotan en línea):
+
+**Fase 0 — Fundaciones** ✅ COMPLETADA
 Backend base (Express + Mongoose + conexión DB), estructura de carpetas de todos los módulos (aunque vacíos), módulo `auth` (login + JWT + roles), módulo `users`, módulo `products` (CRUD simple). App Expo Router base con `(auth)`, `(driver)`, `(admin)`, login funcional.
 
-**Fase 1 — Núcleo de ventas (MVP)**
+**Fase 1 — Núcleo de ventas (MVP)** ✅ COMPLETADA
 `sales` (crear venta, división de pago, validación de suma, ajuste con motivo), `approvals` (listar pendientes, modificar con auditoría, aprobar / cancelar / marcar incidente), `audit` (log genérico). Pantallas: `new-sale`, `my-sales` (chofer); `sales-pending` (manager).
 
-**Fase 2 — Inventario y cierre**
-`inventory` (sesión inicial, cálculo de esperado), `inventoryCounts` (parcial, cierre, inicial), `closing` (conciliación de efectivo + inventario). Pantallas: `inventory-count` (chofer); `inventory`, `closings` (manager).
+**Fase 2 — Inventario y cierre** ✅ COMPLETADA
+`inventory` (sesión inicial, cálculo de esperado), `inventoryCounts` (parcial, cierre, inicial), `closing` (conciliación de efectivo + inventario). Pantallas: `inventory-count` (chofer); `inventory`, `closings` (manager). *Ampliada:* `Closing` ganó el estado `REOPENED` (Sección 4).
 
-**Fase 3 — Reabastecimiento y conteo semanal**
-`replenishment` (servicio + endpoint), conteo tipo `WEEKLY` sobre el modelo existente. Pantallas: `replenishment`, `counts-weekly` (manager).
+**Fase 3 — Reabastecimiento y conteo semanal** ⚠️ PARCIAL
+`replenishment` (servicio + endpoint) implementado tal como se diseñó, sin modelo propio. Conteo tipo `WEEKLY` implementado sobre `InventoryCount`. Pendiente: persistir tickets de reabastecimiento — ver "SIGUIENTE FASE PLANIFICADA" al inicio del documento.
 
-**Fase 4 — Ubicación, mensajería y dispatch**
-`locations` (envío periódico + lectura de posición actual), `messaging`, `dispatch`. Pantallas: `drivers-map`, `send-message` (manager); `inbox` (chofer).
+**Fase 4 — Ubicación, mensajería y dispatch** ✅ COMPLETADA (con expansión significativa)
+`locations`, `messaging`, `dispatch` implementados. `dispatch` se apartó del diseño original de "broadcast de solo lectura" y se implementó como un flujo real de asignación con máquina de estados (`PENDING`/`ACCEPTED`/`COMPLETED`/`CANCELLED`) — ver la nota de divergencia en el modelo `Dispatch`, Sección 4. Además, ambos módulos ganaron cobertura de `AuditLog` (`MESSAGE_SENT/READ`, `DISPATCH_CREATED/ACCEPTED/COMPLETED/CANCELLED`), deliberadamente diferida a un checkpoint posterior en vez de mezclarse con la implementación funcional inicial.
 
-**Fase 5 — Pulido**
-Indicadores de frescura de ubicación en UI, filtros y búsqueda en listados del panel, mejoras de UX en formularios, manejo de errores consistente, preparación de puntos de extensión (nuevos métodos de pago, nuevos roles, notificaciones push) documentados como comentarios `// EXTENSION POINT` donde aplique.
+**Fase 5 — Pulido** ⚠️ PARCIAL
+Parte de lo descrito aquí sí se hizo (manejo de errores consistente en los módulos nuevos, mejoras de UX en Configuración/Choferes/Horarios/Messaging/Dispatch). Pendiente: indicadores de frescura de ubicación en UI, filtros/búsqueda en listados del panel — ver "PENDIENTE / BACKLOG" al inicio del documento.
+
+**Fase 6+ — Expansión no prevista en el plan original** (no existía como fase; se documenta aquí en vez de forzarla dentro de las fases 0–5)
+Trabajo real que se hizo después de la Fase 5 original y que amplió el alcance del proyecto: `workShifts` (fichaje de entrada/salida, concepto nuevo), la subsistema completo de programación de choferes (`defaultShift`, `DriverScheduleException`, `ScheduledShift`, resolución determinista), gestión completa de choferes/vehículos (CRUD, activar/desactivar, borrado seguro con verificación de referencias), el dashboard de manager rediseñado (sistema visual "neo-brutalista"), la reestructuración de Configuración como landing de categorías (Choferes / Horarios / Reabastecimiento), y finalmente la consolidación + auditoría de Messaging/Dispatch documentada arriba. Ver "Registro de cambios / Adiciones de alcance" al inicio del documento para el registro detallado.
 
 ---
 
 ## 11. MVP vs. siguiente iteración
+
+> Esta priorización fue la guía real seguida durante el desarrollo y las Fases 0–4 aquí descritas están completas (ver anotaciones en la Sección 10). El estado de ejecución vigente vive en "IMPLEMENTADO / CERRADO" al inicio del documento; esta sección se conserva porque explica el *razonamiento* detrás del orden elegido, que sigue siendo válido.
 
 **MVP inicial (Fases 0 + 1):**
 - Login con roles (driver / manager).
@@ -533,4 +675,4 @@ Esto ya entrega el objetivo más crítico: **registrar ventas y validarlas con e
 
 ---
 
-**Fin del plan. No se ha implementado código todavía — a la espera de instrucciones para comenzar con la Fase 0.**
+**Fin del plan original.** Todo lo anterior a este punto se conserva como registro histórico de la arquitectura e intención con la que arrancó el proyecto. El estado real de ejecución — qué está construido, qué se amplió respecto a este diseño, y qué sigue pendiente — vive en las secciones "IMPLEMENTADO / CERRADO", "DECISIONES ARQUITECTÓNICAS", "SIGUIENTE FASE PLANIFICADA", "PENDIENTE / BACKLOG" y "Registro de cambios / Adiciones de alcance" al inicio del documento, actualizadas por última vez en el checkpoint `686772f` (2026-08-29).

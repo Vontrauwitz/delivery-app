@@ -1,6 +1,7 @@
 const Dispatch = require('./dispatch.model');
 const User = require('../users/user.model');
 const HttpError = require('../../shared/httpError');
+const auditService = require('../audit/audit.service');
 const { ROLES, DISPATCH_STATUSES } = require('../../shared/constants');
 const vehiclesService = require('../vehicles/vehicles.service');
 
@@ -46,6 +47,22 @@ async function createDispatch({ driverId, vehicleId, destinationLabel, address, 
     createdBy,
   });
 
+  // Snapshot excludes `note` — free-text instructions aren't audit metadata and may carry
+  // details (a gate code, a phone number) that don't belong duplicated into the audit trail.
+  await auditService.logChange({
+    entity: 'Dispatch',
+    entityId: dispatch._id,
+    action: 'DISPATCH_CREATED',
+    changes: [
+      {
+        field: 'dispatch',
+        oldValue: null,
+        newValue: { driver: driverId, address: dispatch.address, destinationLabel: dispatch.destinationLabel, status: dispatch.status },
+      },
+    ],
+    performedBy: createdBy,
+  });
+
   return getDispatchById(dispatch._id);
 }
 
@@ -67,9 +84,18 @@ async function acceptDispatch(id, driverId) {
     throw new HttpError(400, `No se puede aceptar un dispatch en estado ${dispatch.status}`);
   }
 
+  const previousStatus = dispatch.status;
   dispatch.status = DISPATCH_STATUSES.ACCEPTED;
   dispatch.acceptedAt = new Date();
   await dispatch.save();
+
+  await auditService.logChange({
+    entity: 'Dispatch',
+    entityId: id,
+    action: 'DISPATCH_ACCEPTED',
+    changes: [{ field: 'status', oldValue: previousStatus, newValue: dispatch.status }],
+    performedBy: driverId,
+  });
 
   return getDispatchById(id);
 }
@@ -84,9 +110,18 @@ async function completeDispatch(id, driverId) {
     throw new HttpError(400, `Solo se puede completar un dispatch ACCEPTED (estado actual: ${dispatch.status})`);
   }
 
+  const previousStatus = dispatch.status;
   dispatch.status = DISPATCH_STATUSES.COMPLETED;
   dispatch.completedAt = new Date();
   await dispatch.save();
+
+  await auditService.logChange({
+    entity: 'Dispatch',
+    entityId: id,
+    action: 'DISPATCH_COMPLETED',
+    changes: [{ field: 'status', oldValue: previousStatus, newValue: dispatch.status }],
+    performedBy: driverId,
+  });
 
   return getDispatchById(id);
 }
@@ -98,10 +133,19 @@ async function cancelDispatch(id, managerId) {
     throw new HttpError(400, `No se puede cancelar un dispatch en estado ${dispatch.status}`);
   }
 
+  const previousStatus = dispatch.status;
   dispatch.status = DISPATCH_STATUSES.CANCELLED;
   dispatch.cancelledAt = new Date();
   dispatch.cancelledBy = managerId;
   await dispatch.save();
+
+  await auditService.logChange({
+    entity: 'Dispatch',
+    entityId: id,
+    action: 'DISPATCH_CANCELLED',
+    changes: [{ field: 'status', oldValue: previousStatus, newValue: dispatch.status }],
+    performedBy: managerId,
+  });
 
   return getDispatchById(id);
 }

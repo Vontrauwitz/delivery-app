@@ -1,6 +1,7 @@
 const Message = require('./message.model');
 const User = require('../users/user.model');
 const HttpError = require('../../shared/httpError');
+const auditService = require('../audit/audit.service');
 const { ROLES } = require('../../shared/constants');
 
 async function sendMessage({ senderId, recipientIds, subject, body, important }) {
@@ -24,6 +25,20 @@ async function sendMessage({ senderId, recipientIds, subject, body, important })
     body: body.trim(),
     important: Boolean(important),
     readBy: [],
+  });
+
+  // Metadata only — recipient ids and the important flag, never the message body/subject text
+  // itself (message content isn't audit metadata, and may carry personal/operational details
+  // that don't belong duplicated into the audit trail).
+  await auditService.logChange({
+    entity: 'Message',
+    entityId: message._id,
+    action: 'MESSAGE_SENT',
+    changes: [
+      { field: 'recipients', oldValue: null, newValue: uniqueIds },
+      { field: 'important', oldValue: null, newValue: Boolean(important) },
+    ],
+    performedBy: senderId,
   });
 
   return getMessageById(message._id);
@@ -95,6 +110,16 @@ async function markRead(id, driverId) {
   if (!alreadyRead) {
     message.readBy.push({ driver: driverId, readAt: new Date() });
     await message.save();
+
+    // Only on the actual state change — re-marking an already-read message must never produce
+    // a second MESSAGE_READ entry (see the idempotency note above; this mirrors it exactly).
+    await auditService.logChange({
+      entity: 'Message',
+      entityId: id,
+      action: 'MESSAGE_READ',
+      changes: [{ field: 'readBy', oldValue: false, newValue: true }],
+      performedBy: driverId,
+    });
   }
 
   return getMessageById(id, { id: driverId, role: ROLES.DRIVER });

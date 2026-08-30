@@ -21,11 +21,12 @@
     "test:e2e:driver-management": "node test/e2e-driver-management.js",
     "test:e2e:messaging-dispatch": "node test/e2e-messaging-dispatch.js",
     "test:e2e:messaging-audit": "node test/e2e-messaging-audit.js",
+    "test:e2e:replenishment-requests": "node test/e2e-replenishment-requests.js",
     "test:unit:replenishment": "node test/unit-replenishment.js",
     "test:unit:pricing": "node test/unit-pricing.js",
     "test:unit:shift-comparison": "node test/unit-shift-comparison.js",
     "test:unit:schedule-resolution": "node test/unit-schedule-resolution.js",
-    "test:e2e": "npm run test:e2e:phase2 && npm run test:e2e:workshift && npm run test:e2e:replenishment && npm run test:e2e:phase4 && npm run test:e2e:promotions && npm run test:e2e:accounting-periods && npm run test:e2e:driver-inventory && npm run test:e2e:auth-restore && npm run test:e2e:driver-schedule && npm run test:e2e:driver-management && npm run test:e2e:messaging-dispatch && npm run test:e2e:messaging-audit",
+    "test:e2e": "npm run test:e2e:phase2 && npm run test:e2e:workshift && npm run test:e2e:replenishment && npm run test:e2e:phase4 && npm run test:e2e:promotions && npm run test:e2e:accounting-periods && npm run test:e2e:driver-inventory && npm run test:e2e:auth-restore && npm run test:e2e:driver-schedule && npm run test:e2e:driver-management && npm run test:e2e:messaging-dispatch && npm run test:e2e:messaging-audit && npm run test:e2e:replenishment-requests",
     "test:all": "npm run test:unit:replenishment && npm run test:unit:pricing && npm run test:unit:shift-comparison && npm run test:unit:schedule-resolution && npm run test:e2e",
     "test": "node test/runTests.js"
   },

@@ -55,3 +55,17 @@ export const DISPATCH_STATUS_COLORS = {
   COMPLETED: '#16a34a',
   CANCELLED: '#6b7280',
 };
+
+export const REPLENISHMENT_REQUEST_STATUS_LABELS = {
+  DRAFT: 'Borrador',
+  SENT: 'Enviado',
+  FULFILLED: 'Cumplido',
+  CANCELLED: 'Cancelado',
+};
+
+export const REPLENISHMENT_REQUEST_STATUS_COLORS = {
+  DRAFT: '#6b7280',
+  SENT: '#d97706',
+  FULFILLED: '#16a34a',
+  CANCELLED: '#6b7280',
+};

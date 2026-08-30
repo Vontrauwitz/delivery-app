@@ -79,8 +79,9 @@ async function assertServerReachable() {
 }
 
 // Clears the collections the reset script doesn't touch itself (Sale/InventorySession/
-// InventoryCount/Closing/WorkShift/AuditLog/ReplenishmentConfig/LocationPing/Message/Dispatch),
-// then runs the DESTRUCTIVE db:reset script for a clean, deterministic starting point: 1
+// InventoryCount/Closing/WorkShift/AuditLog/ReplenishmentConfig/LocationPing/Message/Dispatch/
+// DriverScheduleException/ReplenishmentRequest), then runs the DESTRUCTIVE db:reset script for a
+// clean, deterministic starting point: 1
 // manager, 1 driver, 1 vehicle assigned to the driver, 10 products (db:reset clears/recreates
 // User, Product, Vehicle, Promotion, AccountingPeriod, and ScheduledShift itself).
 //
@@ -104,6 +105,7 @@ async function resetAndSeed() {
   await mongoose.connection.db.collection('messages').deleteMany({});
   await mongoose.connection.db.collection('dispatches').deleteMany({});
   await mongoose.connection.db.collection('driverscheduleexceptions').deleteMany({});
+  await mongoose.connection.db.collection('replenishmentrequests').deleteMany({});
   await mongoose.disconnect();
 
   // Explicit env, not ambient inheritance — dbReset.js must target the exact same

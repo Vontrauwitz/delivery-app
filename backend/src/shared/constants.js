@@ -117,6 +117,17 @@ const SCHEDULE_EXCEPTION_TYPES = {
 // computed at read time against "now".
 const APP_CONTACT_STALE_THRESHOLD_MS = 20 * 60 * 1000;
 
+// DRAFT: manager is still composing/editing the ticket — the only editable state.
+// SENT: shared with the driver/supplier; contents frozen, only the status itself can move on.
+// FULFILLED / CANCELLED: terminal, permanent (never deleted — same "nothing real gets erased"
+// convention as Sale.CANCELLED / Closing.REOPENED).
+const REPLENISHMENT_REQUEST_STATUSES = {
+  DRAFT: 'DRAFT',
+  SENT: 'SENT',
+  FULFILLED: 'FULFILLED',
+  CANCELLED: 'CANCELLED',
+};
+
 module.exports = {
   ROLES,
   PAYMENT_METHODS,
@@ -137,4 +148,5 @@ module.exports = {
   ACCOUNTING_PERIOD_STATUSES,
   SCHEDULE_EXCEPTION_TYPES,
   APP_CONTACT_STALE_THRESHOLD_MS,
+  REPLENISHMENT_REQUEST_STATUSES,
 };

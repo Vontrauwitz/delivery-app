@@ -26,8 +26,11 @@ Verificado contra el repositorio real (módulos de backend, rutas de frontend y 
 - **Mensajería** — módulo `messaging`: el manager redacta a uno o varios choferes, con un flag opcional `important` (no estaba en el modelo original), bandeja de entrada del chofer con estado leído/no leído y una insignia de no-leídos en el dashboard del chofer.
 - **Dispatch** — implementado como un concepto genuinamente distinto y más rico que el descrito en el plan original (ver la nota en la Sección 4 más abajo): una máquina de estados completa `PENDING → ACCEPTED → COMPLETED` más `CANCELLED` iniciado por el manager, propiedad del chofer verificada del lado del servidor en cada transición, y un `mapsUrl` calculado en el servidor que se abre mediante un enlace seguro por plataforma ("Abrir en mapas") — no la simple "tarjeta de acuse de recibo con dirección" bosquejada originalmente.
 - **Integración de AuditLog en Mensajería + Dispatch** — `MESSAGE_SENT`, `MESSAGE_READ` (idempotente — volver a leer un mensaje ya leído nunca escribe una entrada duplicada), `DISPATCH_CREATED`, `DISPATCH_ACCEPTED`, `DISPATCH_COMPLETED`, `DISPATCH_CANCELLED`. Reutiliza exactamente el `audit.service.logChange()` existente — no se introdujo ningún mecanismo de registro paralelo.
+- **Tickets de solicitud de reabastecimiento** — nuevo módulo `replenishmentRequests` (sibling de `replenishment`, que conserva intacta su función original de cálculo/config): modelo `ReplenishmentRequest` persistente con máquina de estados `DRAFT → SENT → FULFILLED`, con `CANCELLED` como alterno; cada ítem guarda un `productSnapshot.name` capturado al momento de agregarse, para que el ticket siga siendo legible aunque el producto se renombre, desactive o (más raro) se borre después. Chofer/vehículo opcionales, con validación cruzada cuando se dan ambos (el vehículo debe estar asignado a ese chofer). Texto para compartir generado de forma determinista y calculado al leer (nunca persistido), expuesto como `shareText` en la respuesta — mismo principio que `mapsUrl` en Dispatch. Compartir usa `Share` nativo de React Native en iOS/Android y, en web, la Web Share API con retroceso a portapapeles — sin ninguna integración de proveedor externo (Twilio/WhatsApp Business) ni dependencia nueva instalada. Abrir la hoja de compartir nunca marca el ticket como `SENT` por sí solo; eso sigue siendo una acción explícita del manager. Cobertura de AuditLog completa desde el primer commit de este módulo (`REPLENISHMENT_REQUEST_CREATED/UPDATED/SENT/FULFILLED/CANCELLED`), no diferida como en el primer paso de Mensajería/Dispatch. UI integrada en la pantalla ya existente `admin/settings/replenishment.js` mediante una pestaña "Solicitudes" junto a la configuración de cobertura/stock de seguridad, sin crear una pantalla o área de almacén separada.
 
-**Checkpoint verificado actual:** `686772f` — *feat: add messaging and dispatch audit logging*
+**Último HEAD committeado verificado:** `68be14d` — *docs: update delivery app roadmap and scope*.
+
+**Estado de implementación local (sin commit todavía):** Tickets de solicitud de reabastecimiento — completado y probado sobre ese HEAD (suite completa en verde), incluyendo la protección de referencia de producto (un producto referenciado por un `ReplenishmentRequest` no puede borrarse en definitiva). No se ha creado ningún commit para este trabajo; `68be14d` sigue siendo el único HEAD verificado en el historial de git. Cuando se haga el commit, este documento debe actualizarse con el hash real — no se inventa uno aquí de antemano.
 
 ---
 
@@ -46,29 +49,22 @@ Decisiones vigentes, actuales al checkpoint anterior:
 
 ## SIGUIENTE FASE PLANIFICADA
 
-**Tickets de solicitud de reabastecimiento.**
+**Alertas (Centro de alertas).**
 
-Diseño previsto (aún no implementado):
+Los Tickets de solicitud de reabastecimiento (antes documentados en esta sección) ya están implementados — ver "IMPLEMENTADO / CERRADO" arriba. Con ese checkpoint cerrado, el siguiente paso tomado del backlog es Alertas, aún sin empezar:
 
-- Registros persistentes de `ReplenishmentRequest` en MongoDB — el módulo `replenishment` actual es un servicio de cálculo sin estado, sin modelo propio (según el diseño original de la Sección 8); esto introduce el primer registro persistido en ese módulo.
-- Tickets creados por el manager.
-- Asociación opcional con chofer/vehículo.
-- Ítems: `product` + `quantity`.
-- Estados: `DRAFT` → `SENT` → `FULFILLED`, con `CANCELLED` como estado terminal alternativo.
-- Retención histórica — los tickets nunca se borran, siguiendo la convención de "nada real se borra" ya usada en todo el resto del sistema (`Sale.CANCELLED`, `Closing.REOPENED`, el historial de auditoría en general).
-- Cobertura de AuditLog desde el día uno (no diferida esta vez, a diferencia del primer paso de Mensajería/Dispatch).
-- Texto de pedido/compartir generado de forma determinista — un resumen en texto plano del ticket, generado siempre de la misma forma a partir de los mismos datos (sin IA/LLM involucrada en su generación).
-- Compartir empieza con la **hoja de compartir nativa del sistema operativo** y **SMS/WhatsApp a través de apps ya instaladas en el dispositivo** — sin integración de backend con ninguno de los dos proveedores.
-- Explícitamente **fuera de alcance** en este checkpoint: integración con Twilio, integración con la API de WhatsApp Business, un rol de personal de almacén/fulfillment.
-- Cualquier integración futura con un proveedor externo (Twilio, API de WhatsApp Business, etc.) debe poder incorporarse sin rediseñar el modelo `ReplenishmentRequest` — la generación del texto para compartir y el ticket persistido se mantienen deliberadamente independientes de *cómo* se termina entregando el ticket.
+- Reglas de alerta configurables por el manager (qué condiciones disparan una alerta), en vez de un conjunto fijo de condiciones hardcodeadas.
+- Canales configurables — no se asume de antemano un único canal de entrega.
+- Explícitamente no se asume un orden de escalamiento fijo entre condiciones/canales; el diseño debe dejar eso abierto en vez de codificar una jerarquía específica.
+- Antes de implementar, revisar la limitación conocida de `lastSeenAt` como "latido" de actividad reciente (usado hoy en el endpoint de estado esperado-vs-real de choferes) — cualquier regla de alerta que dependa de esa señal hereda sus mismos límites de frescura.
+- No construir todavía — este es el registro de intención para cuando se aborde como su propio checkpoint, no una autorización para empezar ahora.
 
 ---
 
 ## PENDIENTE / BACKLOG
 
-Preservado explícitamente, no descartado, no iniciado:
+Preservado explícitamente, no descartado, no iniciado. (Alertas se movió a "SIGUIENTE FASE PLANIFICADA" arriba — sigue sin iniciarse, solo cambió de sección.)
 
-- **Alertas** (reglas/canales/tiempos de alerta configurables — ver la nota de dirección de producto vigente: no debe asumirse un orden de escalamiento fijo).
 - **Zona peligrosa** (la futura área de Configuración para acciones destructivas/peligrosas — deliberadamente no construida en ningún checkpoint hasta ahora).
 - **Funcionalidad de ubicación/mapa aún incompleta** — `locations`/`LocationPing` existe y alimenta la verificación de referencias adyacente a dispatch, pero todavía no hay pantalla de mapa en vivo, ni vista de historial de recorrido, ni optimización de rutas.
 - **Brechas operativas/de conteo semanal que aún quedan** — el tipo de conteo `WEEKLY` y su flujo disparado por el manager existen según el diseño original de la Sección 7, pero el pulido de punta a punta ahí no se ha revisado desde entonces.
@@ -94,7 +90,7 @@ Registro continuo de adiciones al alcance solicitadas por el usuario, más allá
 | 2026-08 | Rediseño del dashboard de administración (sistema visual neo-brutalista) | ✅ Completo |
 | — | Módulo de Promociones (precios por paquete `QUANTITY_FOR_PRICE`) | ✅ Completo |
 | — | Módulo de Periodos Contables | ✅ Completo |
-| 2026-08-29 | Tickets de solicitud de reabastecimiento (ver "SIGUIENTE FASE PLANIFICADA" arriba) | 🔜 Planeado, no iniciado |
+| 2026-08-29 | Tickets de solicitud de reabastecimiento (modelo `ReplenishmentRequest`, máquina de estados, snapshot de producto, texto para compartir, AuditLog completo, pestaña "Solicitudes" en `admin/settings/replenishment.js`) | ✅ Completo |
 
 ---
 
@@ -675,4 +671,4 @@ Esto ya entrega el objetivo más crítico: **registrar ventas y validarlas con e
 
 ---
 
-**Fin del plan original.** Todo lo anterior a este punto se conserva como registro histórico de la arquitectura e intención con la que arrancó el proyecto. El estado real de ejecución — qué está construido, qué se amplió respecto a este diseño, y qué sigue pendiente — vive en las secciones "IMPLEMENTADO / CERRADO", "DECISIONES ARQUITECTÓNICAS", "SIGUIENTE FASE PLANIFICADA", "PENDIENTE / BACKLOG" y "Registro de cambios / Adiciones de alcance" al inicio del documento, actualizadas por última vez en el checkpoint `686772f` (2026-08-29).
+**Fin del plan original.** Todo lo anterior a este punto se conserva como registro histórico de la arquitectura e intención con la que arrancó el proyecto. El estado real de ejecución — qué está construido, qué se amplió respecto a este diseño, y qué sigue pendiente — vive en las secciones "IMPLEMENTADO / CERRADO", "DECISIONES ARQUITECTÓNICAS", "SIGUIENTE FASE PLANIFICADA", "PENDIENTE / BACKLOG" y "Registro de cambios / Adiciones de alcance" al inicio del documento. Último HEAD committeado verificado: `68be14d` (2026-08-29) — ver la nota de "Estado de implementación local" al inicio del documento para el trabajo ya completado pero aún sin commit sobre ese HEAD.

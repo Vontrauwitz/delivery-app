@@ -74,14 +74,22 @@ async function updateProduct(id, data, actorId) {
 // survive a catalog cleanup untouched. Deactivating (active: false) is the everyday way to
 // retire a product; hard delete is reserved for one that's genuinely never been used.
 async function isProductReferenced(productId) {
-  const [sale, count, session, promotion, replenishmentConfig] = await Promise.all([
+  // Lazy-required to avoid a circular dependency (replenishmentRequests.service depends on this
+  // module for product lookup/validation) — same pattern as inventory.service's lazy require of
+  // inventoryCounts.service. Going through the service (not the ReplenishmentRequest model
+  // directly) keeps this module's cross-module reference checks and the rest of the project on
+  // the same "reach other modules only through their service.js" convention.
+  const replenishmentRequestsService = require('../replenishmentRequests/replenishmentRequests.service');
+
+  const [sale, count, session, promotion, replenishmentConfig, replenishmentRequest] = await Promise.all([
     Sale.exists({ 'items.product': productId }),
     InventoryCount.exists({ $or: [{ 'counts.product': productId }, { 'expectedAtCountTime.product': productId }] }),
     InventorySession.exists({ 'initialStock.product': productId }),
     Promotion.exists({ product: productId }),
     ReplenishmentConfig.exists({ product: productId }),
+    replenishmentRequestsService.isProductReferenced(productId),
   ]);
-  return Boolean(sale || count || session || promotion || replenishmentConfig);
+  return Boolean(sale || count || session || promotion || replenishmentConfig || replenishmentRequest);
 }
 
 async function deleteProduct(id, actorId) {

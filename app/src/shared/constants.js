@@ -43,6 +43,7 @@ export const SHIFT_STATUS_LABELS = {
 };
 
 export const DISPATCH_STATUS_LABELS = {
+  UNASSIGNED: 'Sin asignar',
   PENDING: 'Pendiente',
   ACCEPTED: 'Aceptado',
   COMPLETED: 'Completado',
@@ -50,6 +51,7 @@ export const DISPATCH_STATUS_LABELS = {
 };
 
 export const DISPATCH_STATUS_COLORS = {
+  UNASSIGNED: '#8b5cf6',
   PENDING: '#d97706',
   ACCEPTED: '#2563eb',
   COMPLETED: '#16a34a',

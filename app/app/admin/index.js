@@ -480,6 +480,9 @@ export default function AdminHome() {
         <Pressable onPress={() => router.push('/admin/alerts')}>
           <Text style={styles.tertiaryLink}>Alertas</Text>
         </Pressable>
+        <Pressable onPress={() => router.push('/admin/map')}>
+          <Text style={styles.tertiaryLink}>Mapa</Text>
+        </Pressable>
       </View>
 
       <Pressable style={styles.signOutButton} onPress={signOut}>

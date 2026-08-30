@@ -92,10 +92,15 @@ const REPLENISHMENT_MIN_HISTORY_SESSIONS = 3;
 // isStale note: a stored flag would go stale itself the moment nobody recomputes it.
 const LOCATION_STALE_THRESHOLD_MS = 5 * 60 * 1000;
 
-// PENDING: created by manager, waiting on the driver.
-// ACCEPTED: driver has acknowledged it.
-// COMPLETED / CANCELLED: terminal, permanent.
+// UNASSIGNED: created (single or batch) but not yet given to a driver — sits in the operational
+// pool, invisible to every driver, waiting for a manager to assign it (Mapa Operativo checkpoint).
+// PENDING: assigned to a driver, waiting on their acceptance. Reachable from UNASSIGNED (first
+// assignment) or from PENDING itself (reassignment to a different driver).
+// ACCEPTED: driver has acknowledged it. Not normally reassignable from here.
+// COMPLETED / CANCELLED: terminal, permanent — CANCELLED is also reachable from UNASSIGNED, so a
+// bad pool entry can be removed without ever assigning it.
 const DISPATCH_STATUSES = {
+  UNASSIGNED: 'UNASSIGNED',
   PENDING: 'PENDING',
   ACCEPTED: 'ACCEPTED',
   COMPLETED: 'COMPLETED',

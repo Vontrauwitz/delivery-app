@@ -5,7 +5,7 @@ const service = require('./dispatch.service');
 async function create(req, res, next) {
   try {
     const dispatch = await service.createDispatch({
-      driverId: req.body.driver,
+      driverId: req.body.driver || undefined,
       vehicleId: req.body.vehicle,
       destinationLabel: req.body.destinationLabel,
       address: req.body.address,
@@ -15,6 +15,15 @@ async function create(req, res, next) {
       createdBy: req.user.id,
     });
     res.status(201).json(dispatch);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function createBatch(req, res, next) {
+  try {
+    const result = await service.createBatch({ destinations: req.body.destinations, createdBy: req.user.id });
+    res.status(201).json(result);
   } catch (err) {
     next(err);
   }
@@ -77,4 +86,29 @@ async function cancel(req, res, next) {
   }
 }
 
-module.exports = { create, listMine, listAll, getById, accept, complete, cancel };
+async function assign(req, res, next) {
+  try {
+    res.json(await service.assignDispatch(req.params.id, req.body.driver, req.user.id));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function batchAssign(req, res, next) {
+  try {
+    res.json(await service.batchAssign(req.body.ids, req.body.driver, req.user.id));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function updateDestination(req, res, next) {
+  try {
+    const { address, destinationLabel, latitude, longitude } = req.body;
+    res.json(await service.updateDestination(req.params.id, { address, destinationLabel, latitude, longitude }, req.user.id));
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { create, createBatch, listMine, listAll, getById, accept, complete, cancel, assign, batchAssign, updateDestination };

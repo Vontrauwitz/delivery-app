@@ -20,6 +20,7 @@ const replenishmentRequestsRoutes = require('./modules/replenishmentRequests/rep
 const locationsRoutes = require('./modules/locations/locations.routes');
 const messagingRoutes = require('./modules/messaging/messaging.routes');
 const dispatchRoutes = require('./modules/dispatch/dispatch.routes');
+const alertsRoutes = require('./modules/alerts/alerts.routes');
 const errorHandler = require('./middlewares/errorHandler');
 
 const app = express();
@@ -49,6 +50,7 @@ app.use('/replenishment-requests', replenishmentRequestsRoutes);
 app.use('/locations', locationsRoutes);
 app.use('/messaging', messagingRoutes);
 app.use('/dispatch', dispatchRoutes);
+app.use('/alerts', alertsRoutes);
 
 app.use(errorHandler);
 

@@ -7,8 +7,10 @@ import * as usersApi from '../../src/modules/users/api';
 import * as replenishmentApi from '../../src/modules/replenishment/api';
 import * as inventoryApi from '../../src/modules/inventory/api';
 import * as dashboardApi from '../../src/modules/dashboard/api';
+import * as alertsApi from '../../src/modules/alerts/api';
 import NeoCard from '../../src/modules/dashboard/NeoCard';
 import { formatCurrency } from '../../src/shared/money';
+import { ALERT_SEVERITY_COLORS } from '../../src/shared/constants';
 import { neoColors, neoSpacing, neoRadii, neoTypography } from '../../src/shared/neoTheme';
 
 // No device/width branching needed: every card below uses a flexBasis/maxWidth auto-fill (same
@@ -22,19 +24,6 @@ const SECONDARY = [
   { href: '/admin/weekly-report', label: 'Reportes' },
   { href: '/admin/settings', label: 'Configuración' },
 ];
-
-function isToday(dateValue) {
-  return new Date(dateValue).toDateString() === new Date().toDateString();
-}
-
-// "1h 10min" / "25min" — for the SHOULD_HAVE_ENDED alert's "how long past expected end".
-function formatOverdueDuration(minutes) {
-  if (minutes == null) return '';
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (h === 0) return `${m}min`;
-  return m === 0 ? `${h}h` : `${h}h ${m}min`;
-}
 
 function MetricCard({ title, value, hint, accentColor, onPress }) {
   return (
@@ -111,12 +100,11 @@ export default function AdminHome() {
   const [pendingSales, setPendingSales] = useState([]);
   const [openShifts, setOpenShifts] = useState([]);
   const [salesStats, setSalesStats] = useState(null);
-  const [scheduleComparisons, setScheduleComparisons] = useState([]);
-  // Live per-driver expected-vs-actual status for TODAY (driver-schedule module) — this is what
-  // now powers the "still working past expected end" alert, replacing the old retrospective
-  // EXTENDED-based one (compareShift only ever classifies EXTENDED after a shift closes, so it
-  // could never actually fire for a currently-open shift — see shared/scheduleResolution.js).
-  const [driverScheduleStatuses, setDriverScheduleStatuses] = useState([]);
+  // Persistent, server-evaluated alerts (Alertas subsystem) — this is what powers the "Alertas
+  // operativas" panel below. Never computed client-side: GET /alerts evaluates authoritatively
+  // on the server before returning, so this is never a frontend guess at whether a condition is
+  // currently true (see backend alerts.service).
+  const [openAlerts, setOpenAlerts] = useState([]);
   const [drivers, setDrivers] = useState([]);
   // Fleet-wide "needs attention" — same replenishment formula as everywhere else, just called
   // once per driver. Always kept up to date regardless of which driver is selected below, since
@@ -134,19 +122,17 @@ export default function AdminHome() {
     setLoading(true);
     setLoadError('');
     try {
-      const [pending, shifts, stats, comparisons, driverStatuses, usersData] = await Promise.all([
+      const [pending, shifts, stats, alerts, usersData] = await Promise.all([
         approvalsApi.listPendingSales(token),
         dashboardApi.getOpenShifts(token),
         dashboardApi.getSalesStats(token, 7),
-        dashboardApi.getScheduleComparisons(token),
-        dashboardApi.getDriverScheduleStatuses(token),
+        alertsApi.listAlerts(token, { status: 'OPEN' }),
         usersApi.listUsers(token),
       ]);
       setPendingSales(pending);
       setOpenShifts(shifts);
       setSalesStats(stats);
-      setScheduleComparisons(comparisons);
-      setDriverScheduleStatuses(driverStatuses);
+      setOpenAlerts(alerts);
       const driversData = usersData.filter((u) => u.role === 'driver');
       setDrivers(driversData);
 
@@ -246,44 +232,15 @@ export default function AdminHome() {
   }
 
   const todayEntry = salesStats?.daily?.[salesStats.daily.length - 1];
-  const notStartedToday = scheduleComparisons.filter(
-    (c) => c.comparison.status === 'NOT_STARTED' && isToday(c.scheduledShift.scheduledStart)
-  );
-  // Live, not retrospective: sourced from driver-schedule status (deriveOperationalStatus),
-  // which compares an OPEN WorkShift against its resolved expected end in real time. The old
-  // compareShift EXTENDED status only ever classifies a shift after it closes, so it could never
-  // actually alert on a shift that is still running late — this replaces that dead alert.
-  const overdueShifts = driverScheduleStatuses.filter((s) => s.status === 'SHOULD_HAVE_ENDED');
 
-  const alerts = [
-    pendingSales.length > 0 && {
-      key: 'pending',
-      color: neoColors.warning,
-      text: `${pendingSales.length} venta${pendingSales.length === 1 ? '' : 's'} pendiente${pendingSales.length === 1 ? '' : 's'} de aprobar`,
-      href: '/admin/sales-pending',
-    },
-    attentionItems.length > 0 && {
-      key: 'lowstock',
-      color: neoColors.warning,
-      text: `${attentionItems.length} producto${attentionItems.length === 1 ? '' : 's'} necesitan reposición`,
-      href: '/admin/inventory',
-    },
-    ...overdueShifts.map((s) => ({
-      key: `overdue-${s.driver._id}`,
-      color: neoColors.danger,
-      text: `${s.driver.name}: turno abierto ${formatOverdueDuration(s.endDiffMinutes)} después de lo esperado`,
-      href: '/admin/shifts',
-    })),
-    ...notStartedToday.map((c) => ({
-      key: `notstart-${c.scheduledShift._id}`,
-      color: neoColors.warning,
-      text: `${c.scheduledShift.driver.name}: turno programado hoy, todavía no lo inicia`,
-      // Programación is no longer top-level nav — this is a contextual deep link straight to
-      // the relevant driver's schedule, with back-context so it returns to Configuración (its
-      // new home) rather than nowhere in particular.
-      href: `/admin/schedule?driver=${c.scheduledShift.driver._id}&from=settings`,
-    })),
-  ].filter(Boolean);
+  // Sourced entirely from the persistent Alertas subsystem now (server-evaluated, never a
+  // frontend guess) — top 6 by severity, then most recently triggered. "Ver todas las alertas"
+  // below links to the full operational screen for the rest.
+  const SEVERITY_ORDER = { CRITICAL: 3, WARNING: 2, INFO: 1 };
+  const alerts = [...openAlerts]
+    .sort((a, b) => SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity] || new Date(b.lastTriggeredAt) - new Date(a.lastTriggeredAt))
+    .slice(0, 6)
+    .map((a) => ({ key: a._id, color: ALERT_SEVERITY_COLORS[a.severity], text: a.title, href: '/admin/alerts' }));
 
   const metrics = [
     {
@@ -343,20 +300,32 @@ export default function AdminHome() {
 
       {/* ALERTS */}
       <NeoCard style={styles.sectionWrap} contentStyle={styles.panel}>
-        <PanelHeader title="Alertas operativas" />
+        <View style={styles.panelHeaderRow}>
+          <PanelHeader title="Alertas operativas" />
+          {openAlerts.length > 0 && (
+            <View style={styles.alertCountPill}>
+              <Text style={styles.alertCountPillText}>{openAlerts.length}</Text>
+            </View>
+          )}
+        </View>
         {loading ? (
           <ActivityIndicator color={neoColors.primary} style={styles.panelLoading} />
         ) : alerts.length === 0 ? (
           <Text style={styles.panelEmpty}>Sin alertas — todo en orden.</Text>
         ) : (
-          alerts.map((a) => (
-            <Pressable key={a.key} style={styles.alertRow} onPress={() => router.push(a.href)}>
-              <View style={[styles.alertDot, { backgroundColor: a.color }]} />
-              <Text style={styles.alertText}>{a.text}</Text>
-              <Text style={styles.chevron}>›</Text>
-            </Pressable>
-          ))
+          <>
+            {alerts.map((a) => (
+              <Pressable key={a.key} style={styles.alertRow} onPress={() => router.push(a.href)}>
+                <View style={[styles.alertDot, { backgroundColor: a.color }]} />
+                <Text style={styles.alertText}>{a.text}</Text>
+                <Text style={styles.chevron}>›</Text>
+              </Pressable>
+            ))}
+          </>
         )}
+        <Pressable style={styles.panelLink} onPress={() => router.push('/admin/alerts')}>
+          <Text style={styles.panelLinkText}>Ver todas las alertas →</Text>
+        </Pressable>
       </NeoCard>
 
       {/* INVENTORY QUICK VIEW */}
@@ -508,6 +477,9 @@ export default function AdminHome() {
         <Pressable onPress={() => router.push('/admin/dispatch')}>
           <Text style={styles.tertiaryLink}>Dispatch</Text>
         </Pressable>
+        <Pressable onPress={() => router.push('/admin/alerts')}>
+          <Text style={styles.tertiaryLink}>Alertas</Text>
+        </Pressable>
       </View>
 
       <Pressable style={styles.signOutButton} onPress={signOut}>
@@ -543,6 +515,10 @@ const styles = StyleSheet.create({
   panelLoading: { marginVertical: neoSpacing.md },
   panelLink: { marginTop: neoSpacing.sm, alignItems: 'center' },
   panelLinkText: { ...neoTypography.caption, color: neoColors.primary },
+
+  panelHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  alertCountPill: { backgroundColor: neoColors.danger, borderRadius: neoRadii.full, minWidth: 24, height: 24, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  alertCountPillText: { color: '#fff', fontWeight: '800', fontSize: 12 },
 
   alertRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: neoSpacing.sm, gap: neoSpacing.sm },
   alertDot: { width: 10, height: 10, borderRadius: 5 },

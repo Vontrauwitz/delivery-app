@@ -5,7 +5,7 @@ import NeoCard from '../../../src/modules/dashboard/NeoCard';
 import { neoColors, neoSpacing, neoRadii, neoTypography } from '../../../src/shared/neoTheme';
 
 // Configuración is a category landing, not a form itself — each row below owns its own screen.
-// "Alertas" and "Zona peligrosa" are planned future categories here, deliberately not built yet.
+// "Zona peligrosa" is a planned future category here, deliberately not built yet.
 const CATEGORIES = [
   {
     key: 'drivers',
@@ -27,6 +27,13 @@ const CATEGORIES = [
     title: 'Reabastecimiento',
     description: 'Define cobertura y stock de seguridad por producto.',
     href: '/admin/settings/replenishment',
+  },
+  {
+    key: 'alerts',
+    icon: 'warning-outline',
+    title: 'Alertas',
+    description: 'Activa, desactiva y ajusta las reglas de alerta operativa.',
+    href: '/admin/settings/alerts',
   },
 ];
 

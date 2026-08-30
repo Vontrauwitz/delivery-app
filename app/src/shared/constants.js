@@ -69,3 +69,31 @@ export const REPLENISHMENT_REQUEST_STATUS_COLORS = {
   FULFILLED: '#16a34a',
   CANCELLED: '#6b7280',
 };
+
+export const ALERT_SEVERITY_LABELS = {
+  INFO: 'Info',
+  WARNING: 'Advertencia',
+  CRITICAL: 'Crítica',
+};
+
+// Matches neoTheme's own primary/warning/danger hexes — Alertas lives entirely on neo-themed
+// screens, unlike the older status colors above (which predate that palette).
+export const ALERT_SEVERITY_COLORS = {
+  INFO: '#123B4A',
+  WARNING: '#C98A1E',
+  CRITICAL: '#D14B34',
+};
+
+export const ALERT_STATUS_LABELS = {
+  OPEN: 'Abierta',
+  ACKNOWLEDGED: 'Reconocida',
+  RESOLVED: 'Resuelta',
+};
+
+export const ALERT_RULE_LABELS = {
+  DRIVER_LATE_START: 'Chofer no inició turno a tiempo',
+  DRIVER_SHIFT_OVERRUN: 'Turno abierto más allá de lo esperado',
+  LOCATION_STALE: 'Ubicación desactualizada durante el turno',
+  LOW_INVENTORY: 'Inventario en o bajo el stock de seguridad',
+  PENDING_APPROVAL_TOO_LONG: 'Venta pendiente de aprobar hace demasiado tiempo',
+};

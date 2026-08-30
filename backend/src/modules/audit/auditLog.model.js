@@ -45,6 +45,8 @@ const auditLogSchema = new mongoose.Schema({
       'REPLENISHMENT_REQUEST_SENT',
       'REPLENISHMENT_REQUEST_FULFILLED',
       'REPLENISHMENT_REQUEST_CANCELLED',
+      'ALERT_RULE_UPDATED',
+      'ALERT_ACKNOWLEDGED',
     ],
     required: true,
   },

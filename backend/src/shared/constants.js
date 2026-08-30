@@ -128,6 +128,34 @@ const REPLENISHMENT_REQUEST_STATUSES = {
   CANCELLED: 'CANCELLED',
 };
 
+const ALERT_SEVERITIES = {
+  INFO: 'INFO',
+  WARNING: 'WARNING',
+  CRITICAL: 'CRITICAL',
+};
+
+// OPEN: condition currently true, nobody has looked at it yet.
+// ACKNOWLEDGED: a manager has seen it ("I saw this" — NOT "the problem is fixed"). Stays here as
+// long as the underlying condition remains true.
+// RESOLVED: the underlying condition cleared, whether or not it was ever acknowledged. Terminal
+// for this occurrence — a later recurrence of the same condition creates a new alert (see
+// alerts.service's dedupe-by-`active` scoping), it never reopens a RESOLVED one.
+const OPERATIONAL_ALERT_STATUSES = {
+  OPEN: 'OPEN',
+  ACKNOWLEDGED: 'ACKNOWLEDGED',
+  RESOLVED: 'RESOLVED',
+};
+
+// Stable keys for the first supported set of alert rules (PLAN.md's Alertas checkpoint).
+// REPLENISHMENT_REQUEST_PENDING_TOO_LONG was considered and deliberately deferred — see PLAN.md.
+const ALERT_RULE_KEYS = {
+  DRIVER_LATE_START: 'DRIVER_LATE_START',
+  DRIVER_SHIFT_OVERRUN: 'DRIVER_SHIFT_OVERRUN',
+  LOCATION_STALE: 'LOCATION_STALE',
+  LOW_INVENTORY: 'LOW_INVENTORY',
+  PENDING_APPROVAL_TOO_LONG: 'PENDING_APPROVAL_TOO_LONG',
+};
+
 module.exports = {
   ROLES,
   PAYMENT_METHODS,
@@ -149,4 +177,7 @@ module.exports = {
   SCHEDULE_EXCEPTION_TYPES,
   APP_CONTACT_STALE_THRESHOLD_MS,
   REPLENISHMENT_REQUEST_STATUSES,
+  ALERT_SEVERITIES,
+  OPERATIONAL_ALERT_STATUSES,
+  ALERT_RULE_KEYS,
 };

@@ -10,13 +10,50 @@ const vehiclesService = require('../vehicles/vehicles.service');
 // bulk-import tool — this keeps a single call bounded and its per-line report readable.
 const BATCH_CREATE_MAX = 50;
 
+// The dispatches a route can meaningfully contain — reused by both the minimal auto-increment
+// (nextRouteOrderForDriver) and the manager-driven reorder/summary added in the Route Planning
+// Foundation checkpoint, so "what counts as active" is defined in exactly one place.
+const ACTIVE_DISPATCH_STATUSES = [DISPATCH_STATUSES.PENDING, DISPATCH_STATUSES.ACCEPTED];
+
+function hasCoordinates(obj) {
+  return obj.latitude !== undefined && obj.latitude !== null && obj.longitude !== undefined && obj.longitude !== null;
+}
+
 function withMapsUrl(doc) {
   const obj = doc.toObject ? doc.toObject() : doc;
-  obj.mapsUrl =
-    obj.latitude !== undefined && obj.latitude !== null && obj.longitude !== undefined && obj.longitude !== null
-      ? `https://maps.google.com/?q=${obj.latitude},${obj.longitude}`
-      : `https://maps.google.com/?q=${encodeURIComponent(obj.address)}`;
+  const hasCoords = hasCoordinates(obj);
+  obj.mapsUrl = hasCoords ? `https://maps.google.com/?q=${obj.latitude},${obj.longitude}` : `https://maps.google.com/?q=${encodeURIComponent(obj.address)}`;
+  // Backward-compatible: records created before originalAddress existed simply don't have it —
+  // falling back to the current address is the closest honest answer available for those.
+  obj.originalAddress = obj.originalAddress || obj.address;
+  // Derived, not stored (see the model-level comment on why) — 'NONE' vs. 'MANUAL' today, with
+  // 'GEOCODED' as the natural future value once a geocoding provider is actually integrated.
+  obj.coordinateSource = hasCoords ? 'MANUAL' : 'NONE';
   return obj;
+}
+
+// Deterministic, key-free multi-stop directions link — the exact same "just a URL, no provider
+// integration" approach as the single-stop mapsUrl above, extended to Google's documented
+// directions URL scheme (?api=1&destination=...&waypoints=...). This is NOT route optimization —
+// it opens the stops in the order already decided, in the device's own maps app. No origin is
+// set on purpose, so the maps app starts from wherever the driver currently is, which is how a
+// driver actually uses this (never fabricating a starting point from a possibly-stale location
+// ping). Each stop resolves to its coordinates when known, falling back to its raw address text
+// when not — both are valid Google Maps waypoint values, so a mix of stops with and without
+// coordinates still produces a usable link, just not a metrically precise one for the text-only
+// stops.
+function buildRouteMapsUrl(stops) {
+  if (!Array.isArray(stops) || stops.length === 0) return null;
+  const waypointFor = (s) => (hasCoordinates(s) ? `${s.latitude},${s.longitude}` : s.address);
+
+  const destination = waypointFor(stops[stops.length - 1]);
+  const waypoints = stops.slice(0, -1).map(waypointFor);
+
+  const params = new URLSearchParams({ api: '1', destination, travelmode: 'driving' });
+  if (waypoints.length > 0) {
+    params.set('waypoints', waypoints.join('|'));
+  }
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
 function isValidCoordinate(lat, lng) {
@@ -57,11 +94,13 @@ async function createDispatch({ driverId, vehicleId, destinationLabel, address, 
     vehicle = vehicleId ? await vehiclesService.getVehicleById(vehicleId) : await vehiclesService.getActiveVehicleForDriver(driverId);
   }
 
+  const trimmedAddress = address.trim();
   const dispatch = await Dispatch.create({
     driver: driver ? driver._id : null,
     vehicle: vehicle ? vehicle._id : undefined,
     destinationLabel: (destinationLabel || '').trim(),
-    address: address.trim(),
+    address: trimmedAddress,
+    originalAddress: trimmedAddress,
     latitude: hasLat ? Number(latitude) : undefined,
     longitude: hasLng ? Number(longitude) : undefined,
     note: (note || '').trim(),
@@ -140,11 +179,92 @@ async function loadDispatchOrFail(id) {
 async function nextRouteOrderForDriver(driverId) {
   const last = await Dispatch.findOne({
     driver: driverId,
-    status: { $in: [DISPATCH_STATUSES.PENDING, DISPATCH_STATUSES.ACCEPTED] },
+    status: { $in: ACTIVE_DISPATCH_STATUSES },
   })
     .sort({ routeOrder: -1 })
     .select('routeOrder');
   return (last?.routeOrder || 0) + 1;
+}
+
+// Server-authoritative route reorder: the submitted `orderedIds` must exactly match the driver's
+// CURRENT set of active (PENDING/ACCEPTED) dispatch ids — not a superset, not a subset, not
+// containing anything from another driver or a terminal dispatch. This one check is what makes
+// every required safety property fall out together: a foreign-driver id can never be in this
+// driver's active set (rejected as "unexpected"); a terminal dispatch is never in the active set
+// either (same rejection); a stale client that dropped or gained a stop fails the exact-match
+// check instead of silently applying a different route than what the manager actually reviewed.
+// All validation happens before any write, so a rejected payload never partially mutates anything.
+async function reorderRoute({ driverId, orderedIds, actorId }) {
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+    throw new HttpError(400, 'Debes indicar el orden de al menos un destino');
+  }
+  const normalizedIds = orderedIds.map(String);
+  const uniqueIds = new Set(normalizedIds);
+  if (uniqueIds.size !== normalizedIds.length) {
+    throw new HttpError(400, 'La lista de destinos no puede tener ids duplicados');
+  }
+
+  await resolveDriverForAssignment(driverId);
+
+  const activeDispatches = await Dispatch.find({ driver: driverId, status: { $in: ACTIVE_DISPATCH_STATUSES } }).select('_id routeOrder');
+  const activeIds = new Set(activeDispatches.map((d) => String(d._id)));
+
+  const missing = [...activeIds].filter((id) => !uniqueIds.has(id));
+  const unexpected = normalizedIds.filter((id) => !activeIds.has(id));
+  if (missing.length > 0 || unexpected.length > 0) {
+    throw new HttpError(
+      409,
+      'El orden enviado no coincide con los destinos activos actuales del chofer. Actualiza la pantalla e intenta de nuevo.'
+    );
+  }
+
+  const previousOrder = activeDispatches
+    .slice()
+    .sort((a, b) => (a.routeOrder ?? 0) - (b.routeOrder ?? 0))
+    .map((d) => String(d._id));
+
+  for (let i = 0; i < normalizedIds.length; i++) {
+    await Dispatch.updateOne({ _id: normalizedIds[i] }, { $set: { routeOrder: i + 1 } });
+  }
+
+  // One event for the whole route, not one per stop — `entity: 'DispatchRoute'` is a conceptual
+  // grouping (there's no DispatchRoute model/collection), scoped by driverId since a reorder is
+  // inherently about "this driver's route," not any single Dispatch document.
+  await auditService.logChange({
+    entity: 'DispatchRoute',
+    entityId: driverId,
+    action: 'DISPATCH_ROUTE_REORDERED',
+    changes: [{ field: 'routeOrder', oldValue: previousOrder, newValue: normalizedIds }],
+    performedBy: actorId,
+  });
+
+  return getRouteSummary(driverId);
+}
+
+// Read model for the manager's per-driver route view: active stops in order, plus honest counts
+// of what has/lacks coordinates — never fabricates distance/time, since there's no routing engine
+// behind this yet (see routeOptimizer.js for that future contract).
+async function getRouteSummary(driverId) {
+  const driver = await User.findOne({ _id: driverId, role: ROLES.DRIVER });
+  if (!driver) {
+    throw new HttpError(404, 'Chofer no encontrado');
+  }
+
+  const dispatches = await Dispatch.find({ driver: driverId, status: { $in: ACTIVE_DISPATCH_STATUSES } })
+    .sort({ routeOrder: 1, createdAt: 1 })
+    .populate('vehicle', 'name');
+
+  const stops = dispatches.map(withMapsUrl);
+  const withCoordinatesCount = stops.filter(hasCoordinates).length;
+
+  return {
+    driver: { _id: driver._id, name: driver.name, email: driver.email },
+    stops,
+    stopCount: stops.length,
+    withCoordinatesCount,
+    missingCoordinatesCount: stops.length - withCoordinatesCount,
+    routeMapsUrl: buildRouteMapsUrl(stops),
+  };
 }
 
 // Assign (UNASSIGNED -> PENDING) or reassign (PENDING -> PENDING, different driver) — the same
@@ -440,6 +560,8 @@ module.exports = {
   assignDispatch,
   batchAssign,
   updateDestination,
+  reorderRoute,
+  getRouteSummary,
   acceptDispatch,
   completeDispatch,
   cancelDispatch,

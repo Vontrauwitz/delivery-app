@@ -58,4 +58,32 @@ function validateUpdateDestination(req, res, next) {
   next();
 }
 
-module.exports = { validateCreateDispatch, validateBatchCreate, validateAssign, validateBatchAssign, validateUpdateDestination };
+// Shape-only check — the actual "does this set match the driver's real active dispatches"
+// validation needs DB access, so it lives in dispatch.service.reorderRoute, not here.
+function validateReorderRoute(req, res, next) {
+  const { driver, orderedIds } = req.body;
+  if (!driver) {
+    return next(new HttpError(400, 'El chofer es requerido'));
+  }
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+    return next(new HttpError(400, 'orderedIds debe ser una lista con al menos un id'));
+  }
+  next();
+}
+
+function validateRouteSummaryQuery(req, res, next) {
+  if (!req.query.driver) {
+    return next(new HttpError(400, 'El parámetro driver es requerido'));
+  }
+  next();
+}
+
+module.exports = {
+  validateCreateDispatch,
+  validateBatchCreate,
+  validateAssign,
+  validateBatchAssign,
+  validateUpdateDestination,
+  validateReorderRoute,
+  validateRouteSummaryQuery,
+};

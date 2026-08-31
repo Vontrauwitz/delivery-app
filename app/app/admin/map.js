@@ -50,6 +50,14 @@ export default function AdminMapScreen() {
   const [error, setError] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState('ALL');
 
+  // --- Route Planning Foundation: ordered route for whichever single driver is selected --------
+  const [routeSummary, setRouteSummary] = useState(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeError, setRouteError] = useState('');
+  const [localOrder, setLocalOrder] = useState([]); // ids, on-screen order (may differ from saved)
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -67,6 +75,72 @@ export default function AdminMapScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const loadRoute = useCallback(
+    async (driverId) => {
+      setRouteLoading(true);
+      setRouteError('');
+      setSaveError('');
+      try {
+        const summary = await dispatchApi.getRouteSummary(token, driverId);
+        setRouteSummary(summary);
+        setLocalOrder(summary.stops.map((s) => s._id));
+      } catch (err) {
+        setRouteError(err.message || 'No se pudo cargar la ruta de este chofer');
+        setRouteSummary(null);
+        setLocalOrder([]);
+      } finally {
+        setRouteLoading(false);
+      }
+    },
+    [token]
+  );
+
+  useEffect(() => {
+    if (selectedDriverId === 'ALL') {
+      setRouteSummary(null);
+      setLocalOrder([]);
+      setRouteError('');
+      return;
+    }
+    loadRoute(selectedDriverId);
+  }, [selectedDriverId, loadRoute]);
+
+  const stopsById = useMemo(() => {
+    const map = new Map();
+    (routeSummary?.stops || []).forEach((s) => map.set(s._id, s));
+    return map;
+  }, [routeSummary]);
+
+  const savedOrder = useMemo(() => (routeSummary?.stops || []).map((s) => s._id), [routeSummary]);
+  const hasUnsavedOrder = useMemo(() => localOrder.join(',') !== savedOrder.join(','), [localOrder, savedOrder]);
+
+  function moveStop(index, direction) {
+    setSaveError('');
+    setLocalOrder((prev) => {
+      const target = index + direction;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  async function saveRouteOrder() {
+    if (!routeSummary) return;
+    setSaving(true);
+    setSaveError('');
+    try {
+      const updated = await dispatchApi.reorderRoute(token, routeSummary.driver._id, localOrder);
+      setRouteSummary(updated);
+      setLocalOrder(updated.stops.map((s) => s._id));
+      await load();
+    } catch (err) {
+      setSaveError(err.message || 'No se pudo guardar el nuevo orden');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const activeDispatches = useMemo(() => dispatches.filter((d) => d.status === 'PENDING' || d.status === 'ACCEPTED'), [dispatches]);
   const unassigned = useMemo(() => dispatches.filter((d) => d.status === 'UNASSIGNED'), [dispatches]);
@@ -169,13 +243,99 @@ export default function AdminMapScreen() {
         ))
       )}
 
-      <Text style={styles.sectionTitle}>Destinos activos</Text>
-      {loading ? (
-        <ActivityIndicator color={neoColors.primary} style={{ marginTop: neoSpacing.md }} />
-      ) : visibleActiveDispatches.length === 0 ? (
-        <Text style={styles.empty}>Sin destinos activos para esta selección.</Text>
+      {selectedDriverId === 'ALL' ? (
+        <>
+          <Text style={styles.sectionTitle}>Destinos activos</Text>
+          {loading ? (
+            <ActivityIndicator color={neoColors.primary} style={{ marginTop: neoSpacing.md }} />
+          ) : visibleActiveDispatches.length === 0 ? (
+            <Text style={styles.empty}>Sin destinos activos para esta selección.</Text>
+          ) : (
+            visibleActiveDispatches.map(renderDestinationCard)
+          )}
+        </>
       ) : (
-        visibleActiveDispatches.map(renderDestinationCard)
+        <>
+          <Text style={styles.sectionTitle}>Ruta ordenada</Text>
+          {routeLoading ? (
+            <ActivityIndicator color={neoColors.primary} style={{ marginTop: neoSpacing.md }} />
+          ) : routeError ? (
+            <Text style={styles.error}>{routeError}</Text>
+          ) : !routeSummary || routeSummary.stopCount === 0 ? (
+            <Text style={styles.empty}>Este chofer no tiene paradas activas.</Text>
+          ) : (
+            <NeoCard style={styles.cardWrap} contentStyle={styles.cardBody}>
+              <Text style={styles.meta}>
+                {routeSummary.stopCount} parada(s) · {routeSummary.withCoordinatesCount} con coordenadas
+                {routeSummary.missingCoordinatesCount > 0 ? `, ${routeSummary.missingCoordinatesCount} sin coordenadas` : ''}
+              </Text>
+              <Text style={styles.metaMuted}>
+                Sin optimización automática todavía — el orden es completamente manual. No se calcula distancia ni tiempo estimado.
+              </Text>
+
+              {localOrder.map((id, index) => {
+                const stop = stopsById.get(id);
+                if (!stop) return null;
+                return (
+                  <View key={id} style={styles.routeStopRow}>
+                    <View style={styles.routeStopMoveCol}>
+                      <Pressable
+                        onPress={() => moveStop(index, -1)}
+                        disabled={index === 0}
+                        hitSlop={8}
+                        style={[styles.moveButton, index === 0 && styles.moveButtonDisabled]}
+                      >
+                        <Ionicons name="chevron-up" size={16} color={index === 0 ? neoColors.textTertiary : neoColors.ink} />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => moveStop(index, 1)}
+                        disabled={index === localOrder.length - 1}
+                        hitSlop={8}
+                        style={[styles.moveButton, index === localOrder.length - 1 && styles.moveButtonDisabled]}
+                      >
+                        <Ionicons name="chevron-down" size={16} color={index === localOrder.length - 1 ? neoColors.textTertiary : neoColors.ink} />
+                      </Pressable>
+                    </View>
+                    <View style={styles.routeStopBody}>
+                      <Text style={styles.routeStopIndex}>{index + 1}.</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.destinationLabel} numberOfLines={1}>
+                          {stop.destinationLabel || stop.address}
+                        </Text>
+                        <Pressable onPress={() => openInMaps(stop.mapsUrl)}>
+                          <Text style={[styles.meta, styles.link]} numberOfLines={1}>
+                            {stop.address}
+                          </Text>
+                        </Pressable>
+                        {stop.coordinateSource === 'NONE' && <Text style={styles.metaMuted}>Sin coordenadas</Text>}
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+
+              {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
+
+              <View style={styles.routeActionsRow}>
+                <Pressable
+                  style={[styles.saveOrderButton, (!hasUnsavedOrder || saving) && styles.saveOrderButtonDisabled]}
+                  onPress={saveRouteOrder}
+                  disabled={!hasUnsavedOrder || saving}
+                >
+                  {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveOrderButtonText}>Guardar orden</Text>}
+                </Pressable>
+                <Pressable
+                  style={[styles.openRouteButton, hasUnsavedOrder && styles.openRouteButtonDisabled]}
+                  onPress={() => !hasUnsavedOrder && openInMaps(routeSummary.routeMapsUrl)}
+                  disabled={hasUnsavedOrder || !routeSummary.routeMapsUrl}
+                >
+                  <Text style={[styles.openRouteButtonText, hasUnsavedOrder && styles.openRouteButtonTextDisabled]}>Abrir ruta en mapas</Text>
+                </Pressable>
+              </View>
+              {hasUnsavedOrder && <Text style={styles.metaMuted}>Guarda el orden antes de abrir la ruta en mapas.</Text>}
+            </NeoCard>
+          )}
+        </>
       )}
 
       {selectedDriverId === 'ALL' && (
@@ -245,4 +405,47 @@ const styles = StyleSheet.create({
 
   panelLink: { marginTop: neoSpacing.sm, alignItems: 'center' },
   panelLinkText: { ...neoTypography.caption, color: neoColors.primary },
+
+  // Route Planning Foundation — up/down reorder rows. Mobile-first: no drag/drop, so this must
+  // read and work cleanly on a ~360px-wide screen with plain tap targets.
+  routeStopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: neoSpacing.sm,
+    paddingVertical: neoSpacing.sm,
+    borderTopWidth: 2,
+    borderTopColor: neoColors.neutralMuted,
+  },
+  routeStopMoveCol: { gap: 2 },
+  moveButton: {
+    width: 28,
+    height: 22,
+    borderRadius: neoRadii.sm,
+    borderWidth: 2,
+    borderColor: neoColors.ink,
+    backgroundColor: neoColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moveButtonDisabled: { borderColor: neoColors.neutralMuted },
+  routeStopBody: { flexDirection: 'row', alignItems: 'flex-start', gap: neoSpacing.sm, flex: 1, minWidth: 0 },
+  routeStopIndex: { fontWeight: '800', color: neoColors.textSecondary, fontSize: 13 },
+
+  routeActionsRow: { flexDirection: 'row', gap: neoSpacing.sm, marginTop: neoSpacing.md, flexWrap: 'wrap' },
+  saveOrderButton: { flex: 1, minWidth: 140, backgroundColor: neoColors.primary, borderRadius: neoRadii.md, paddingVertical: neoSpacing.sm, alignItems: 'center' },
+  saveOrderButtonDisabled: { opacity: 0.4 },
+  saveOrderButtonText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  openRouteButton: {
+    flex: 1,
+    minWidth: 140,
+    borderWidth: 2,
+    borderColor: neoColors.ink,
+    borderRadius: neoRadii.md,
+    paddingVertical: neoSpacing.sm,
+    alignItems: 'center',
+    backgroundColor: neoColors.surface,
+  },
+  openRouteButtonDisabled: { borderColor: neoColors.neutralMuted },
+  openRouteButtonText: { color: neoColors.ink, fontWeight: '800', fontSize: 13 },
+  openRouteButtonTextDisabled: { color: neoColors.textTertiary },
 });

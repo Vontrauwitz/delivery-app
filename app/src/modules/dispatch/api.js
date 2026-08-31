@@ -44,3 +44,11 @@ export function batchAssign(token, ids, driverId) {
 export function updateDestination(token, id, payload) {
   return request(`/dispatch/${id}/destination`, { method: 'PATCH', body: payload, token });
 }
+
+export function getRouteSummary(token, driverId) {
+  return request(`/dispatch/route-summary?driver=${driverId}`, { token });
+}
+
+export function reorderRoute(token, driverId, orderedIds) {
+  return request('/dispatch/route-order', { method: 'PATCH', body: { driver: driverId, orderedIds }, token });
+}

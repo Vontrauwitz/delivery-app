@@ -111,4 +111,34 @@ async function updateDestination(req, res, next) {
   }
 }
 
-module.exports = { create, createBatch, listMine, listAll, getById, accept, complete, cancel, assign, batchAssign, updateDestination };
+async function reorderRoute(req, res, next) {
+  try {
+    res.json(await service.reorderRoute({ driverId: req.body.driver, orderedIds: req.body.orderedIds, actorId: req.user.id }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function routeSummary(req, res, next) {
+  try {
+    res.json(await service.getRouteSummary(req.query.driver));
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = {
+  create,
+  createBatch,
+  listMine,
+  listAll,
+  getById,
+  accept,
+  complete,
+  cancel,
+  assign,
+  batchAssign,
+  updateDestination,
+  reorderRoute,
+  routeSummary,
+};

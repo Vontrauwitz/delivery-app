@@ -1,22 +1,22 @@
 const { execSync } = require('child_process');
 const path = require('path');
 const mongoose = require('mongoose');
+const { extractDbName, assertTestDbName, assertSafeTestBase, validateTestIdentity } = require('./testSafety');
 
 const BACKEND_ROOT = path.join(__dirname, '..');
-const BASE = process.env.E2E_BASE_URL || `http://localhost:${process.env.PORT || 4000}`;
+// Never falls back to the normal dev port (4000) — only an explicit override, or the dedicated
+// test port. See testSafety.js for the incident this replaced: e2e tests silently hitting a real
+// dev server left running on the port this used to default to.
+const TEST_PORT = process.env.TEST_PORT || '4100';
+const BASE = process.env.E2E_BASE_URL || `http://localhost:${TEST_PORT}`;
+assertSafeTestBase(BASE);
+
 // This suite must never default to the normal dev database — only ever an explicit override or
 // a name that's unambiguously a test database. See assertTestDatabase below for the hard guard
 // that backs this up before anything destructive actually runs.
 const MONGO_URI = process.env.MONGO_URI || process.env.TEST_MONGO_URI || 'mongodb://127.0.0.1:27017/delivery-app_test';
 
 let failures = 0;
-
-// Extracts the database name from a Mongo connection string, robust to query params
-// (?retryWrites=...) and both mongodb:// and mongodb+srv:// forms.
-function extractDbName(uri) {
-  const withoutQuery = uri.split('?')[0];
-  return withoutQuery.split('/').pop();
-}
 
 // Hard safety guard: resetAndSeed() is destructive (it shells out to the same script
 // `npm run db:reset` uses). This suite must NEVER be able to wipe the normal development
@@ -27,13 +27,11 @@ function extractDbName(uri) {
 // to target the real dev database, deliberately, when run directly by a developer.
 function assertTestDatabase(uri) {
   const dbName = extractDbName(uri);
-  if (!/[-_]test$/i.test(dbName)) {
+  try {
+    assertTestDbName(dbName, { context: 'test reset database' });
+  } catch (err) {
     throw new Error(
-      `\nRefusing to run the destructive test reset — target database "${dbName}" does not look ` +
-        `like a test database (its name must end in "_test" or "-test").\n` +
-        `This guard exists specifically so a misconfigured MONGO_URI can never wipe the normal ` +
-        `development database when tests run.\n` +
-        `Set MONGO_URI or TEST_MONGO_URI to a database name like "delivery-app_test" and try again.\n` +
+      `${err.message}Set MONGO_URI or TEST_MONGO_URI to a database name like "delivery-app_test" and try again.\n` +
         `(Current value: ${uri})\n`
     );
   }
@@ -66,15 +64,44 @@ async function req(path, { method = 'GET', body, token, expectStatus } = {}) {
   return { status: res.status, data };
 }
 
+// Verifies not just that SOMETHING answers at BASE, but that it is genuinely the isolated
+// throwaway test server — never a real dev server that happens to be listening on the same port.
+// This is the fix for the incident where e2e tests silently wrote into the real dev database:
+// liveness alone ("did /health respond?") was never enough, because a dev server started with
+// `npm run dev` answers /health too. The /health/test-identity route only exists on a server
+// started with TEST_MODE=true (see app.js), so a real dev server 404s here and this fails closed.
 async function assertServerReachable() {
+  let res;
   try {
-    const res = await fetch(`${BASE}/health`);
+    res = await fetch(`${BASE}/health`);
     if (!res.ok) throw new Error(`unexpected status ${res.status}`);
   } catch (err) {
     console.error(
-      `\nCannot reach the backend at ${BASE}. Start it first (e.g. "npm run dev" in backend/) before running this suite.\n`
+      `\nCannot reach a backend at ${BASE}. This suite requires the isolated test server — run it via ` +
+        `"npm test" (or "npm run test:all" after starting the throwaway server yourself), never by ` +
+        `pointing it at your normal dev server.\n`
     );
     throw err;
+  }
+
+  let identity;
+  try {
+    const identityRes = await fetch(`${BASE}/health/test-identity`);
+    identity = identityRes.ok ? await identityRes.json() : null;
+  } catch {
+    identity = null;
+  }
+
+  const problems = validateTestIdentity(identity, { expectedPort: TEST_PORT });
+  if (problems.length > 0) {
+    throw new Error(
+      `\nRefusing to run e2e tests against the server at ${BASE} — it did not prove itself to be ` +
+        `the isolated test server:\n` +
+        problems.map((p) => `  - ${p}`).join('\n') +
+        `\n\nThis is very likely a real dev server (started with plain "npm run dev") rather than ` +
+        `the throwaway test server "npm test" is supposed to spin up on its own. Run the tests via ` +
+        `"npm test" from backend/, and do not point E2E_BASE_URL at a manually-started server.\n`
+    );
   }
 }
 

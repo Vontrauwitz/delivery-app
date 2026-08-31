@@ -4,7 +4,7 @@
 // own priority-chain math (already covered by unit-schedule-resolution.js) — only that this
 // module's rules consume that output correctly.
 //
-// Requires the backend to be running (npm run dev) against the configured MONGO_URI. Resets and
+// Run via "npm test" — never manually with "npm run dev" (see test/testSafety.js for why). Resets and
 // reseeds the relevant collections itself, so it can be run repeatedly without manual setup.
 //
 // Usage: node test/e2e-alerts.js (or: npm run test:e2e:alerts)
@@ -86,11 +86,22 @@ async function main() {
   const todayWeekday = getIsoWeekday(new Date());
   const todayKey = toDateKey(new Date());
 
+  // scheduledStart is clamped to never go earlier than local midnight today — a plain
+  // `now - minutesAgoStart` (as used previously) crosses into YESTERDAY's local calendar day
+  // whenever this runs within `minutesAgoStart` minutes of local midnight, which makes the
+  // day-scoped schedule lookup miss the ScheduledShift entirely (the exact, real flake this hit
+  // for the 60-min-ago DRIVER_SHIFT_OVERRUN case). Same principle as the driver-schedule midnight
+  // fix in e2e-driver-schedule.js: only scheduledStart's calendar day matters for that lookup, so
+  // clamping only it is sufficient. This still tests the intended "N minutes late" scenario in the
+  // overwhelming majority of real run times — the same wall-clock tradeoff already accepted there.
   async function setScheduledShift(driverId, minutesAgoStart) {
     return runDbTask(async () => {
       const ScheduledShift = require('../src/modules/scheduledShifts/scheduledShift.model');
       await ScheduledShift.deleteMany({ driver: driverId });
-      const scheduledStart = new Date(Date.now() - minutesAgoStart * 60000);
+      const now = new Date();
+      const naiveStart = new Date(now.getTime() - minutesAgoStart * 60000);
+      const localMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const scheduledStart = naiveStart.getTime() > localMidnight.getTime() ? naiveStart : new Date(localMidnight.getTime() + 60000);
       const scheduledEnd = new Date(scheduledStart.getTime() + 8 * 60 * 60 * 1000);
       return ScheduledShift.create({ driver: driverId, scheduledStart, scheduledEnd, createdBy: managerId });
     });
@@ -156,21 +167,30 @@ async function main() {
   // covered here for basic correctness).
   // =========================================================================
 
-  await setScheduledShift(driver1Id, 60); // started an hour ago, 8h scheduled duration
+  const overrunShift = await setScheduledShift(driver1Id, 60); // started an hour ago, 8h scheduled duration
   await req('/work-shifts/start', { method: 'POST', token: driver1Token, expectStatus: 201 });
   await req('/alerts/evaluate', { method: 'POST', token: managerToken, expectStatus: 200 });
   assert((await findOpenAlert('DRIVER_SHIFT_OVERRUN', driver1Id)) === null, 'no DRIVER_SHIFT_OVERRUN alert while still within the scheduled window');
 
   // Only scheduledEnd needs to move into the past — SHOULD_HAVE_ENDED/endDiffMinutes only look
-  // at "now vs. expectedEnd" for an OPEN shift, independent of when it actually started. Kept as
-  // a small minute-based offset (not hours) so scheduledStart never risks crossing local
-  // midnight into a different calendar day, which would make findForDriverAndDate miss it.
+  // at "now vs. expectedEnd" for an OPEN shift, independent of when it actually started; its
+  // calendar day isn't schedule-lookup-scoped the way scheduledStart's is. But it must still stay
+  // chronologically AFTER scheduledStart to represent a coherent shift — so it's anchored to the
+  // actual (possibly midnight-clamped) scheduledStart above, not to raw wall-clock `now`, using
+  // the same clamp technique as setScheduledShift itself: `now - 40min` in the overwhelming
+  // majority of real run times, falling back to scheduledStart + 1min only in the rare case where
+  // that would otherwise land at or before the shift's own start.
+  const naiveOverrunEnd = new Date(Date.now() - 40 * 60 * 1000);
+  const overrunEnd =
+    naiveOverrunEnd.getTime() > overrunShift.scheduledStart.getTime() + 60000
+      ? naiveOverrunEnd
+      : new Date(overrunShift.scheduledStart.getTime() + 60000);
   await runDbTask(async () => {
     const ScheduledShift = require('../src/modules/scheduledShifts/scheduledShift.model');
-    await ScheduledShift.updateMany({ driver: driver1Id }, { $set: { scheduledEnd: new Date(Date.now() - 40 * 60 * 1000) } });
+    await ScheduledShift.updateMany({ driver: driver1Id }, { $set: { scheduledEnd: overrunEnd } });
   });
   await req('/alerts/evaluate', { method: 'POST', token: managerToken, expectStatus: 200 });
-  assert(!!(await findOpenAlert('DRIVER_SHIFT_OVERRUN', driver1Id)), 'DRIVER_SHIFT_OVERRUN alert fires once the open shift runs 40min past its expected end (grace 30min)');
+  assert(!!(await findOpenAlert('DRIVER_SHIFT_OVERRUN', driver1Id)), 'DRIVER_SHIFT_OVERRUN alert fires once the open shift runs well past its expected end (grace 30min)');
 
   await req('/work-shifts/end', { method: 'PATCH', token: driver1Token, expectStatus: 200 });
   await req('/alerts/evaluate', { method: 'POST', token: managerToken, expectStatus: 200 });

@@ -4,7 +4,7 @@
 // targets for both. Cross-driver isolation and the accept/complete/cancel status machine are
 // already thoroughly covered by e2e-phase4.js and are not repeated here.
 //
-// Requires the backend to be running (npm run dev) against the configured MONGO_URI. Resets
+// Run via "npm test" — never manually with "npm run dev" (see test/testSafety.js for why). Resets
 // and reseeds the relevant collections itself, so it can be run repeatedly without manual setup.
 //
 // Usage: node test/e2e-messaging-dispatch.js  (or: npm run test:e2e:messaging-dispatch)

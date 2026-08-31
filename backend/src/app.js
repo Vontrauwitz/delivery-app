@@ -1,5 +1,7 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const cors = require('cors');
+const env = require('./config/env');
 const authRoutes = require('./modules/auth/auth.routes');
 const usersRoutes = require('./modules/users/users.routes');
 const productsRoutes = require('./modules/products/products.routes');
@@ -29,6 +31,20 @@ app.use(cors());
 app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+// Test-only server identity check — exists ONLY when TEST_MODE=true (set exclusively by
+// test/runTests.js's throwaway server spawn). A normal `npm run dev`/`npm start` process never
+// sets TEST_MODE, so this route simply does not exist there (404), which is exactly the signal
+// the e2e test harness's assertServerReachable() relies on to refuse running against a real dev
+// server (see test/testSafety.js — this closes the gap that once let e2e tests silently write
+// into the real dev database when a dev server happened to already be listening on the port they
+// defaulted to). Only ever exposes the connected DB name and port — never credentials/secrets,
+// and never anything at all outside test mode.
+if (env.isTestMode) {
+  app.get('/health/test-identity', (req, res) => {
+    res.json({ env: 'test', dbName: mongoose.connection.name, port: env.port });
+  });
+}
 
 app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);

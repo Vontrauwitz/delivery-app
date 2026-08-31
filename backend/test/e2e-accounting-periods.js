@@ -2,7 +2,7 @@
 // the 10-product seeded order, and ScheduledShift <-> WorkShift matching (closest-within-tolerance,
 // match-once, never re-matched, never modifies the WorkShift).
 //
-// Requires the backend to be running (npm run dev) against the configured MONGO_URI. Resets
+// Run via "npm test" — never manually with "npm run dev" (see test/testSafety.js for why). Resets
 // and reseeds the relevant collections itself, so it can be run repeatedly without manual setup.
 //
 // Usage: node test/e2e-accounting-periods.js  (or: npm run test:e2e:accounting-periods)

@@ -11,8 +11,8 @@
 // dispatch.service.updateDestination() directly, in-process, with messaging.service.sendMessage
 // monkey-patched to throw — a real messaging failure can't be induced from outside over HTTP.
 //
-// Requires the backend to be running (npm run dev) against the configured MONGO_URI for the
-// setup/verification steps that go through the HTTP API; the failure-injection step itself
+// Run via "npm test" — never manually with "npm run dev" (see test/testSafety.js for why) — for
+// the setup/verification steps that go through the HTTP API; the failure-injection step itself
 // bypasses HTTP and talks to the service layer directly against that same database.
 //
 // Usage: node test/e2e-dispatch-notification-failure.js (or: npm run test:e2e:dispatch-notification-failure)

@@ -4,7 +4,7 @@
 // Does not re-test the pre-existing accept/complete/cancel state machine or cross-driver
 // isolation for those — see e2e-phase4.js / e2e-messaging-dispatch.js / e2e-messaging-audit.js.
 //
-// Requires the backend to be running (npm run dev) against the configured MONGO_URI. Resets and
+// Run via "npm test" — never manually with "npm run dev" (see test/testSafety.js for why). Resets and
 // reseeds the relevant collections itself, so it can be run repeatedly without manual setup.
 //
 // Usage: node test/e2e-dispatch-map.js (or: npm run test:e2e:dispatch-map)

@@ -3,7 +3,7 @@
 // snapshot stability, share-text generation, and AuditLog coverage. Does not re-test the
 // pre-existing suggestion/config replenishment behavior — see e2e-replenishment.js for that.
 //
-// Requires the backend to be running (npm run dev) against the configured MONGO_URI. Resets and
+// Run via "npm test" — never manually with "npm run dev" (see test/testSafety.js for why). Resets and
 // reseeds the relevant collections itself, so it can be run repeatedly without manual setup.
 //
 // Usage: node test/e2e-replenishment-requests.js (or: npm run test:e2e:replenishment-requests)

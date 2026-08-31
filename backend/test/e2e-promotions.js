@@ -4,7 +4,7 @@
 // final-total adjustment (with the reason-required rule), and that manager approval is still
 // required regardless of how the sale was priced.
 //
-// Requires the backend to be running (npm run dev) against the configured MONGO_URI. Resets
+// Run via "npm test" — never manually with "npm run dev" (see test/testSafety.js for why). Resets
 // and reseeds the relevant collections itself, so it can be run repeatedly without manual setup.
 //
 // Usage: node test/e2e-promotions.js  (or: npm run test:e2e:promotions)
